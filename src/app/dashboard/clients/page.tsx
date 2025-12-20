@@ -51,6 +51,23 @@ export default function ClientsPage() {
         c.phone?.includes(searchTerm)
     );
 
+    async function handleExportExcel() {
+        const dataToExport = clients.map(c => ({
+            '상호명': c.name,
+            '사업자번호': c.biz_reg_no,
+            '관리 그룹': c.client_groups?.name || '미분류',
+            '전화번호': c.phone,
+            '주소': c.address,
+            '밴사': c.van_company,
+            '장비': c.equipment
+        }));
+
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, '거래처목록');
+        XLSX.writeFile(workbook, `거래처관리_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
     return (
         <div className="space-y-8">
             {/* Header */}
