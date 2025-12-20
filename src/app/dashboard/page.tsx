@@ -7,11 +7,19 @@ import {
     CheckCircle2,
     Clock,
     ArrowUpRight,
-    Loader2
+    Loader2,
+    Megaphone,
+    ChevronRight,
+    Calendar,
+    Shield,
+    Plus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
+import { Modal } from '@/components/Modal';
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [stats, setStats] = useState({
         totalClients: 0,
         pendingRecords: 0,
@@ -19,6 +27,16 @@ export default function DashboardPage() {
         completedToday: 0
     });
     const [recentRecords, setRecentRecords] = useState<any[]>([]);
+    const [latestNotice, setLatestNotice] = useState<any>(null);
+    const [isNoticeModalOpen, setIsNoticeModalOpen] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [clients, setClients] = useState<any[]>([]);
+    const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+    const [newRecord, setNewRecord] = useState({
+        client_id: '',
+        type: '장애',
+        details: ''
+    });
     const [loading, setLoading] = useState(true);
     const supabase = createClient();
 
@@ -30,23 +48,19 @@ export default function DashboardPage() {
         try {
             setLoading(true);
 
+            // Fetch stats by status
+            const [{ count: pendingCount }, { count: processingCount }, { count: completedCount }] = await Promise.all([
+                supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
+                supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'processing'),
+                supabase.from('service_records').select('*', { count: 'exact', head: true })
+                    .eq('status', 'completed')
+                    .gte('processed_at', new Date().toISOString().split('T')[0])
+            ]);
+
             // Fetch total clients
             const { count: clientCount } = await supabase
                 .from('clients')
                 .select('*', { count: 'exact', head: true });
-
-            // Fetch pending records (no processed_at)
-            const { count: pendingCount } = await supabase
-                .from('service_records')
-                .select('*', { count: 'exact', head: true })
-                .is('processed_at', null);
-
-            // Fetch today's completed records
-            const today = new Date().toISOString().split('T')[0];
-            const { count: completedCount } = await supabase
-                .from('service_records')
-                .select('*', { count: 'exact', head: true })
-                .gte('processed_at', today);
 
             // Fetch recent records
             const { data: records } = await supabase
@@ -55,14 +69,31 @@ export default function DashboardPage() {
                 .order('created_at', { ascending: false })
                 .limit(5);
 
+            // Fetch latest notice
+            const { data: noticeData } = await supabase
+                .from('notices')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+
+            // Fetch clients and service types for the modal
+            const [{ data: clientsData }, { data: typesData }] = await Promise.all([
+                supabase.from('clients').select('id, name').order('name'),
+                supabase.from('service_types').select('*').order('sort_order')
+            ]);
+
             setStats({
                 totalClients: clientCount || 0,
                 pendingRecords: pendingCount || 0,
-                processingRecords: 0,
+                processingRecords: processingCount || 0,
                 completedToday: completedCount || 0
             });
 
             setRecentRecords(records || []);
+            setLatestNotice(noticeData);
+            setClients(clientsData || []);
+            setServiceTypes(typesData || []);
         } catch (error) {
             console.error('Error fetching dashboard data:', error);
         } finally {
@@ -70,9 +101,22 @@ export default function DashboardPage() {
         }
     }
 
+    async function handleAddRecord(e: React.FormEvent) {
+        e.preventDefault();
+        try {
+            const { error } = await supabase.from('service_records').insert([newRecord]);
+            if (error) throw error;
+            setIsAddModalOpen(false);
+            setNewRecord({ client_id: '', type: '장애', details: '' });
+            fetchDashboardData(); // Refresh counts and recent records
+        } catch (error: any) {
+            alert(`등록 오류: ${error.message}`);
+        }
+    }
+
     const STATS_CONFIG = [
         { label: '전체 거래처', value: stats.totalClients, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { label: '미처리 장애', value: stats.pendingRecords, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+        { label: '대기 중', value: stats.pendingRecords, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
         { label: '처리 중', value: stats.processingRecords, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
         { label: '금일 완료', value: stats.completedToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
     ];
@@ -80,90 +124,199 @@ export default function DashboardPage() {
     if (loading) {
         return (
             <div className="flex h-64 items-center justify-center">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
         );
     }
 
     return (
-        <div className="space-y-10">
-            <div>
-                <h1 className="text-3xl font-bold tracking-tight mb-2">대시보드</h1>
-                <p className="text-muted-foreground">실시간 장애 현황 및 요약입니다.</p>
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-bold text-slate-900">대시보드</h1>
+                <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-800 shadow-sm whitespace-nowrap">
+                    {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
+                </div>
             </div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Latest Notice Banner */}
+            {latestNotice && (
+                <div
+                    onClick={() => setIsNoticeModalOpen(true)}
+                    className="bg-white border border-blue-100 rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:bg-blue-50/50 transition-all group shadow-sm"
+                >
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                        <Megaphone className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[11px] font-bold text-blue-600 uppercase tracking-tight">최신 공지</span>
+                            <span className="text-[11px] text-slate-400 font-medium">
+                                {new Date(latestNotice.created_at).toLocaleDateString()}
+                            </span>
+                        </div>
+                        <p className="text-[14px] font-medium text-slate-800 truncate group-hover:text-blue-700 transition-colors">
+                            {latestNotice.title}
+                        </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                </div>
+            )}
+
+            {/* Stats Grid - Compact cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 {STATS_CONFIG.map((stat) => (
-                    <div key={stat.label} className="glass p-6 rounded-3xl border shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between mb-4">
-                            <div className={`p-3 rounded-2xl ${stat.bg}`}>
-                                <stat.icon className={`w-6 h-6 ${stat.color}`} />
+                    <div key={stat.label} className="bg-white p-3 md:p-4 rounded-lg border border-slate-100 shadow-sm text-center">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                            <div className={`p-1 rounded-md ${stat.bg} ${stat.color}`}>
+                                <stat.icon className="w-3.5 h-3.5 md:w-4 md:h-4" />
                             </div>
-                            <ArrowUpRight className="w-5 h-5 text-muted-foreground/30" />
+                            <p className="text-xs font-medium text-slate-500">{stat.label}</p>
                         </div>
-                        <div>
-                            <p className="text-sm font-medium text-muted-foreground">{stat.label}</p>
-                            <h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
-                        </div>
+                        <h3 className="text-lg md:text-xl font-bold text-slate-900">{stat.value}</h3>
                     </div>
                 ))}
             </div>
 
-            {/* Recent Activity */}
+            {/* Main Content Area - Grid Layout */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2 glass rounded-3xl border p-8">
-                    <h3 className="text-xl font-bold mb-6">최근 장애 접수</h3>
-                    <div className="space-y-4">
+                {/* Recent Activity List */}
+                <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden min-h-[400px]">
+                    <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                        <h3 className="font-bold text-lg text-slate-800">최근 접수 내역</h3>
+                        <button
+                            onClick={() => router.push('/dashboard/records')}
+                            className="text-sm text-blue-600 font-semibold hover:text-blue-700 transition-colors"
+                        >
+                            전체보기
+                        </button>
+                    </div>
+                    <div className="divide-y divide-slate-50">
                         {recentRecords.length > 0 ? (
-                            recentRecords.map((record, i) => (
-                                <div key={record.id} className="flex items-center gap-4 p-4 rounded-2xl bg-input/50 border border-transparent hover:border-border transition-all">
-                                    <div className="w-12 h-12 rounded-xl bg-white border flex items-center justify-center font-bold text-primary">
-                                        {i + 1}
+                            recentRecords.map((record) => (
+                                <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between group">
+                                    <div className="flex items-center gap-4 overflow-hidden">
+                                        <div className={`w-2 h-2 rounded-full shrink-0 ${record.processed_at ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+                                        <div className="min-w-0">
+                                            <p className="text-sm font-bold text-slate-900 truncate">{record.clients?.name || '알 수 없음'}</p>
+                                            <p className="text-xs text-slate-500 truncate mt-0.5">{record.details || '내용 없음'}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold truncate">{record.clients?.name || '미지정'}</p>
-                                        <p className="text-xs text-muted-foreground truncate">접수내용: {record.details || '-'}</p>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${record.processed_at
-                                                ? 'bg-emerald-100 text-emerald-600'
-                                                : 'bg-red-100 text-red-600'
-                                            }`}>
-                                            {record.type || '장애'}
+                                    <div className="flex items-center gap-3 shrink-0">
+                                        <span className="text-xs text-slate-400 font-medium whitespace-nowrap">
+                                            {new Date(record.created_at).toLocaleDateString()}
                                         </span>
-                                        <p className="text-[10px] text-muted-foreground mt-1">
-                                            {record.created_at ? new Date(record.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-'}
-                                        </p>
+                                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold min-w-[50px] text-center ${record.status === 'completed'
+                                            ? 'bg-emerald-50 text-emerald-700'
+                                            : record.status === 'processing'
+                                                ? 'bg-amber-50 text-amber-700'
+                                                : 'bg-red-50 text-red-700'
+                                            }`}>
+                                            {record.status === 'completed' ? '완료' : record.status === 'processing' ? '처리중' : '대기'}
+                                        </span>
                                     </div>
                                 </div>
                             ))
                         ) : (
-                            <div className="text-center py-10 text-muted-foreground">
-                                접수된 기록이 없습니다.
+                            <div className="text-center py-16 text-slate-400 text-sm">
+                                접수된 내역이 없습니다
                             </div>
                         )}
                     </div>
                 </div>
 
-                <div className="glass rounded-3xl border p-8">
-                    <h3 className="text-xl font-bold mb-6">빠른 통계</h3>
-                    <div className="space-y-4">
-                        <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100">
-                            <p className="text-sm text-blue-600 font-medium">전체 거래처</p>
-                            <p className="text-3xl font-bold text-blue-700 mt-1">{stats.totalClients}개</p>
-                        </div>
-                        <div className="p-4 rounded-2xl bg-red-50 border border-red-100">
-                            <p className="text-sm text-red-600 font-medium">미처리 장애</p>
-                            <p className="text-3xl font-bold text-red-700 mt-1">{stats.pendingRecords}건</p>
-                        </div>
-                        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
-                            <p className="text-sm text-emerald-600 font-medium">금일 완료</p>
-                            <p className="text-3xl font-bold text-emerald-700 mt-1">{stats.completedToday}건</p>
-                        </div>
-                    </div>
+                {/* Quick Actions */}
+                <div className="space-y-6">
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold text-sm shadow-md shadow-blue-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                        <Plus className="w-5 h-5" />
+                        신규 접수 등록
+                    </button>
                 </div>
             </div>
+
+            {/* Notice Detail Modal */}
+            <Modal isOpen={isNoticeModalOpen} onClose={() => setIsNoticeModalOpen(false)} title="공지사항 확인">
+                {latestNotice && (
+                    <div className="space-y-6">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-[11px] text-slate-400 font-medium">
+                                    {new Date(latestNotice.created_at).toLocaleString()}
+                                </span>
+                            </div>
+                            <h2 className="text-xl font-bold text-slate-900 leading-tight">
+                                {latestNotice.title}
+                            </h2>
+                            <div className="pb-4 border-b border-slate-100" />
+                        </div>
+
+                        <div className="text-slate-800 text-[14px] font-medium leading-relaxed whitespace-pre-wrap min-h-[200px]">
+                            {latestNotice.content}
+                        </div>
+
+                        <div className="pt-4 border-t border-slate-50 flex justify-end">
+                            <button onClick={() => setIsNoticeModalOpen(false)} className="btn-primary px-8">닫기</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* Add Record Modal */}
+            <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="신규 접수 등록">
+                <form onSubmit={handleAddRecord} className="space-y-4">
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">거래처 선택 *</label>
+                        <select
+                            required
+                            className="input-field w-full text-[14px] font-medium text-slate-800"
+                            value={newRecord.client_id}
+                            onChange={(e) => setNewRecord({ ...newRecord, client_id: e.target.value })}
+                        >
+                            <option value="">거래처를 선택하세요</option>
+                            {clients.map(client => (
+                                <option key={client.id} value={client.id}>{client.name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">서비스 유형 *</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            {serviceTypes.map(type => (
+                                <button
+                                    key={type.id}
+                                    type="button"
+                                    onClick={() => setNewRecord({ ...newRecord, type: type.name })}
+                                    className={`py-2 px-3 rounded-lg border text-[13px] font-medium transition-all ${newRecord.type === type.name
+                                        ? 'bg-blue-600 border-blue-600 text-white'
+                                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                >
+                                    {type.name}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">상세 내용</label>
+                        <textarea
+                            rows={3}
+                            placeholder="상세 내용을 입력하세요"
+                            className="input-field w-full text-[14px] font-medium text-slate-800"
+                            value={newRecord.details}
+                            onChange={(e) => setNewRecord({ ...newRecord, details: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="pt-2 flex gap-3">
+                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn-outline flex-1">취소</button>
+                        <button type="submit" className="btn-primary flex-1">등록하기</button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 }
