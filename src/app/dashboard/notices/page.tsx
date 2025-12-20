@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import {
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { Modal } from '@/components/Modal';
+import { useToast } from '@/components/Toast';
 
 const ROLE_LABELS: Record<string, string> = {
     operator: '전체',
@@ -44,7 +46,7 @@ export default function NoticesPage() {
         content: '',
         allowed_roles: ['operator', 'admin', 'callcenter', 'field']
     });
-
+    const { showToast } = useToast();
     const supabase = createClient();
 
     useEffect(() => {
@@ -95,9 +97,10 @@ export default function NoticesPage() {
             if (error) throw error;
             setIsCreateModalOpen(false);
             setFormData({ title: '', content: '', allowed_roles: ALL_ROLES });
+            showToast('공지사항이 등록되었습니다.', 'success');
             fetchNotices();
         } catch (error: any) {
-            alert(`공지 등록 오류: ${error.message}`);
+            showToast(`공지 등록 오류: ${error.message}`, 'error');
         }
     }
 
@@ -116,9 +119,10 @@ export default function NoticesPage() {
 
             if (error) throw error;
             setEditingNotice(null);
+            showToast('공지사항이 수정되었습니다.', 'success');
             fetchNotices();
         } catch (error: any) {
-            alert(`공지 수정 오류: ${error.message}`);
+            showToast(`공지 수정 오류: ${error.message}`, 'error');
         }
     }
 
@@ -127,9 +131,10 @@ export default function NoticesPage() {
         try {
             const { error } = await supabase.from('notices').delete().eq('id', id);
             if (error) throw error;
+            showToast('공지사항이 삭제되었습니다.', 'info');
             fetchNotices();
         } catch (error: any) {
-            alert(`공지 삭제 오류: ${error.message}`);
+            showToast(`공지 삭제 오류: ${error.message}`, 'error');
         }
     }
 

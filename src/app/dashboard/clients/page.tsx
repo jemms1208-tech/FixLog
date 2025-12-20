@@ -1,10 +1,12 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
-import { Search, Plus, Loader2, Pencil } from 'lucide-react';
+import { Search, Plus, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
+import { useToast } from '@/components/Toast';
 
 export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -27,6 +29,7 @@ export default function ClientsPage() {
     });
 
     const supabase = createClient();
+    const { showToast } = useToast();
 
     useEffect(() => {
         fetchUserRole();
@@ -63,8 +66,8 @@ export default function ClientsPage() {
     }
 
     const filteredClients = clients.filter(c =>
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone?.includes(searchTerm)
+        (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (c.phone || '').includes(searchTerm)
     );
 
     async function handleAddClient(e: React.FormEvent) {
@@ -79,9 +82,9 @@ export default function ClientsPage() {
             setIsModalOpen(false);
             fetchClients();
             setNewClient({ name: '', biz_reg_no: '', phone: '', contact_phone: '', address: '', van_company: '', equipment: '', group_id: '' });
-        } catch (error) {
-            console.error(error);
-            alert('오류 발생');
+            showToast('거래처가 성공적으로 등록되었습니다.', 'success');
+        } catch (error: any) {
+            showToast(`등록 실패: ${error.message}`, 'error');
         }
     }
 
@@ -104,10 +107,24 @@ export default function ClientsPage() {
                 .eq('id', editingClient.id);
             if (error) throw error;
             setEditingClient(null);
+            showToast('거래처 정보가 수정되었습니다.', 'success');
             fetchClients();
-        } catch (error) {
-            console.error(error);
-            alert('수정 중 오류 발생');
+        } catch (error: any) {
+            showToast(`수정 실패: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleDeleteClient(id: string) {
+        if (!confirm('정말 이 거래처를 삭제하시겠습니까?')) return;
+        try {
+            const { error } = await supabase.from('clients').delete().eq('id', id);
+            if (error) throw error;
+            showToast('거래처가 삭제되었습니다.', 'info');
+            fetchClients();
+            setViewingClient(null);
+            setEditingClient(null);
+        } catch (error: any) {
+            showToast(`삭제 실패: ${error.message}`, 'error');
         }
     }
 
@@ -190,12 +207,20 @@ export default function ClientsPage() {
                                     </div>
                                     <div className="col-span-2 flex justify-end">
                                         {(userRole === 'admin' || userRole === 'operator') && (
-                                            <button
-                                                onClick={() => setEditingClient({ ...client, group_id: client.group_id || '' })}
-                                                className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
-                                            >
-                                                수정
-                                            </button>
+                                            <div className="flex gap-1 justify-end">
+                                                <button
+                                                    onClick={() => setEditingClient({ ...client, group_id: client.group_id || '' })}
+                                                    className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
+                                                >
+                                                    수정
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDeleteClient(client.id)}
+                                                    className="text-[12px] font-medium text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all"
+                                                >
+                                                    삭제
+                                                </button>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -230,8 +255,9 @@ export default function ClientsPage() {
                             </div>
                         )}
                     </div>
-                </div>
-            )}
+                </div >
+            )
+            }
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="새 거래처 등록">
                 <form onSubmit={handleAddClient} className="space-y-4">
@@ -343,17 +369,25 @@ export default function ClientsPage() {
 
                         <div className="pt-4 flex gap-2">
                             {(userRole === 'admin' || userRole === 'operator') && (
-                                <button
-                                    onClick={() => {
-                                        setEditingClient({ ...viewingClient, group_id: viewingClient.group_id || '' });
-                                        setViewingClient(null);
-                                    }}
-                                    className="flex-1 btn-outline font-semibold py-3"
-                                >
-                                    정보 수정
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            setEditingClient({ ...viewingClient, group_id: viewingClient.group_id || '' });
+                                            setViewingClient(null);
+                                        }}
+                                        className="flex-1 btn-outline font-bold py-3 h-auto"
+                                    >
+                                        정보 수정
+                                    </button>
+                                    <button
+                                        onClick={() => handleDeleteClient(viewingClient.id)}
+                                        className="flex-1 btn-outline border-red-200 text-red-600 font-bold py-3 h-auto hover:bg-red-50 transition-colors"
+                                    >
+                                        삭제
+                                    </button>
+                                </>
                             )}
-                            <button onClick={() => setViewingClient(null)} className="flex-1 btn-primary font-semibold py-3">닫기</button>
+                            <button onClick={() => setViewingClient(null)} className="flex-1 btn-primary font-bold py-3 h-auto">닫기</button>
                         </div>
                     </div>
                 )}

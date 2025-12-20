@@ -1,4 +1,5 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import {
@@ -17,6 +18,7 @@ import {
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/Modal';
+import { useToast } from '@/components/Toast';
 
 export default function DashboardPage() {
     const router = useRouter();
@@ -38,6 +40,7 @@ export default function DashboardPage() {
         details: ''
     });
     const [loading, setLoading] = useState(true);
+    const { showToast } = useToast();
     const supabase = createClient();
 
     useEffect(() => {
@@ -108,9 +111,10 @@ export default function DashboardPage() {
             if (error) throw error;
             setIsAddModalOpen(false);
             setNewRecord({ client_id: '', type: '장애', details: '' });
+            showToast('접수가 등록되었습니다.', 'success');
             fetchDashboardData(); // Refresh counts and recent records
         } catch (error: any) {
-            alert(`등록 오류: ${error.message}`);
+            showToast(`등록 오류: ${error.message}`, 'error');
         }
     }
 

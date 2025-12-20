@@ -13,9 +13,12 @@ import {
     ShieldCheck,
     Bell,
     X,
-    Loader2
+    Loader2,
+    UserCircle
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
+import { useToast } from '@/components/Toast';
+import { Modal } from '@/components/Modal';
 
 const MENU_ITEMS = [
     { name: '대시보드', icon: LayoutDashboard, href: '/dashboard', roles: ['operator', 'admin', 'callcenter', 'field'] },
@@ -37,6 +40,11 @@ export default function DashboardLayout({
     const pathname = usePathname();
     const router = useRouter();
     const supabase = createClient();
+    const { showToast } = useToast();
+
+    const [isMyProfileModalOpen, setIsMyProfileModalOpen] = useState(false);
+    const [myProfile, setMyProfile] = useState<any>(null);
+    const [isSavingProfile, setIsSavingProfile] = useState(false);
 
     useEffect(() => {
         async function initDashboard() {
@@ -66,8 +74,45 @@ export default function DashboardLayout({
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
+        showToast('로그아웃 되었습니다.', 'info');
         router.push('/login');
     };
+
+    async function handleUpdateMyProfile(e: React.FormEvent) {
+        e.preventDefault();
+        if (!myProfile) return;
+        setIsSavingProfile(true);
+        try {
+            const { error } = await supabase
+                .from('profiles')
+                .update({
+                    display_name: myProfile.display_name,
+                    username: myProfile.username,
+                    phone: myProfile.phone,
+                    team_name: myProfile.team_name
+                })
+                .eq('id', myProfile.id);
+
+            if (error) throw error;
+            showToast('내 정보가 수정되었습니다.', 'success');
+            setIsMyProfileModalOpen(false);
+        } catch (error: any) {
+            showToast(`수정 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSavingProfile(false);
+        }
+    }
+
+    async function openMyProfile() {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+            if (data) {
+                setMyProfile(data);
+                setIsMyProfileModalOpen(true);
+            }
+        }
+    }
 
     if (loading) {
         return (
@@ -188,6 +233,21 @@ export default function DashboardLayout({
                         </button>
                         <span className="font-extrabold tracking-tight text-xl text-slate-900 lg:hidden">픽스로그</span>
                     </div>
+
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={openMyProfile}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
+                        >
+                            <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                                <UserCircle className="w-5 h-5" />
+                            </div>
+                            <div className="hidden sm:block text-left">
+                                <p className="text-xs font-bold text-slate-900 leading-none">{myProfile?.display_name || '내 정보'}</p>
+                                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tight">{userRole}</p>
+                            </div>
+                        </button>
+                    </div>
                 </header>
 
                 <main className="flex-1 overflow-y-auto bg-slate-50">
@@ -195,6 +255,64 @@ export default function DashboardLayout({
                         {children}
                     </div>
                 </main>
+
+                {/* My Profile Modal */}
+                <Modal
+                    isOpen={isMyProfileModalOpen}
+                    onClose={() => setIsMyProfileModalOpen(false)}
+                    title="내 정보 수정"
+                >
+                    {myProfile && (
+                        <form onSubmit={handleUpdateMyProfile} className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">이름</label>
+                                    <input
+                                        required
+                                        className="input-field w-full text-[14px] font-medium text-slate-800"
+                                        value={myProfile.display_name || ''}
+                                        onChange={(e) => setMyProfile({ ...myProfile, display_name: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">아이디</label>
+                                    <input
+                                        required
+                                        className="input-field w-full text-[14px] font-medium text-slate-800"
+                                        value={myProfile.username || ''}
+                                        onChange={(e) => setMyProfile({ ...myProfile, username: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">연락처</label>
+                                    <input
+                                        className="input-field w-full text-[14px] font-medium text-slate-800"
+                                        value={myProfile.phone || ''}
+                                        onChange={(e) => setMyProfile({ ...myProfile, phone: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">팀 이름</label>
+                                    <input
+                                        className="input-field w-full text-[14px] font-medium text-slate-800"
+                                        value={myProfile.team_name || ''}
+                                        onChange={(e) => setMyProfile({ ...myProfile, team_name: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="pt-2 flex gap-3">
+                                <button type="button" onClick={() => setIsMyProfileModalOpen(false)} className="btn-outline flex-1">취소</button>
+                                <button type="submit" disabled={isSavingProfile} className="btn-primary flex-1">
+                                    {isSavingProfile ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : '저장하기'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </Modal>
             </div>
         </div>
     );

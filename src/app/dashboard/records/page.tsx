@@ -1,10 +1,12 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from 'react';
 import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
+import { useToast } from '@/components/Toast';
 
 const STATUS_MAP = {
     pending: { label: '대기', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
@@ -31,6 +33,7 @@ export default function RecordsPage() {
     const [userRole, setUserRole] = useState<string>('field');
 
     const supabase = createClient();
+    const { showToast } = useToast();
 
     useEffect(() => {
         fetchUserRole();
@@ -75,8 +78,8 @@ export default function RecordsPage() {
     }
 
     const filteredRecords = records.filter(r =>
-        r.clients?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.details?.toLowerCase().includes(searchTerm.toLowerCase())
+        (r.clients?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (r.details || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     async function handleAddRecord(e: React.FormEvent) {
@@ -94,9 +97,9 @@ export default function RecordsPage() {
             setIsModalOpen(false);
             fetchRecords();
             setNewRecord({ client_id: '', type: '장애', details: '' });
+            showToast('접수가 등록되었습니다.', 'success');
         } catch (error: any) {
-            console.error('Full error:', error);
-            alert(`오류: ${error?.message || error?.code || JSON.stringify(error)}`);
+            showToast(`등록 오류: ${error.message}`, 'error');
         }
     }
 
@@ -118,9 +121,10 @@ export default function RecordsPage() {
                 .eq('id', editingRecord.id);
             if (error) throw error;
             setEditingRecord(null);
+            showToast('내역이 수정되었습니다.', 'success');
             fetchRecords();
         } catch (error: any) {
-            alert(`수정 오류: ${error?.message}`);
+            showToast(`수정 오류: ${error.message}`, 'error');
         }
     }
 
@@ -149,9 +153,10 @@ export default function RecordsPage() {
                 .eq('id', completingRecord.id);
             if (error) throw error;
             setCompletingRecord(null);
+            showToast('처리가 완료되었습니다.', 'success');
             fetchRecords();
         } catch (error: any) {
-            alert(`완료 처리 오류: ${error?.message}`);
+            showToast(`완료 처리 오류: ${error.message}`, 'error');
         }
     }
 
@@ -180,9 +185,10 @@ export default function RecordsPage() {
                 .eq('id', processingRecord.id);
             if (error) throw error;
             setProcessingRecord(null);
+            showToast('처리 중으로 변경되었습니다.', 'success');
             fetchRecords();
         } catch (error: any) {
-            alert(`처리 시작 오류: ${error?.message}`);
+            showToast(`처리 시작 오류: ${error.message}`, 'error');
         }
     }
 
@@ -193,9 +199,10 @@ export default function RecordsPage() {
                 .update({ status: 'processing' })
                 .eq('id', recordId);
             if (error) throw error;
+            showToast('처리 중으로 변경되었습니다.', 'success');
             fetchRecords();
         } catch (error: any) {
-            alert(`처리 시작 오류: ${error?.message}`);
+            showToast(`처리 시작 오류: ${error.message}`, 'error');
         }
     }
 
@@ -298,7 +305,7 @@ export default function RecordsPage() {
                                         <div className="col-span-3 flex gap-1 justify-end">
                                             <button
                                                 onClick={() => setEditingRecord({ ...record, client_id: record.client_id || '' })}
-                                                className="text-[12px] font-medium text-slate-600 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
+                                                className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
                                             >
                                                 수정
                                             </button>
@@ -306,16 +313,16 @@ export default function RecordsPage() {
                                             {(userRole === 'operator' || userRole === 'admin' || userRole === 'callcenter') && statusKey === 'pending' && (
                                                 <button
                                                     onClick={() => openProcessingModal(record)}
-                                                    className="text-[12px] font-medium text-blue-600 px-2 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-all"
+                                                    className="text-[12px] font-medium text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-all"
                                                 >
-                                                    1차
+                                                    1차 처리
                                                 </button>
                                             )}
 
                                             {statusKey !== 'completed' && (
                                                 <button
                                                     onClick={() => openCompleteModal(record)}
-                                                    className="text-[12px] font-medium text-emerald-600 px-2 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-all"
+                                                    className="text-[12px] font-medium text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-all"
                                                 >
                                                     완료
                                                 </button>
