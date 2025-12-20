@@ -19,7 +19,7 @@ export default function LoginPage() {
         setLoading(true);
 
         // Internally use a dummy email
-        const email = `${username}@fixlog.local`;
+        const email = `${username}@jenetworks.local`;
 
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
             email,

@@ -43,7 +43,7 @@ export default function SignUpPage() {
         setLoading(true);
 
         try {
-            const email = `${username}@fixlog.local`;
+            const email = `${username}@jenetworks.local`;
 
             const { data, error } = await supabase.auth.signUp({
                 email,

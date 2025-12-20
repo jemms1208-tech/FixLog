@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 import { ToastProvider } from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "FixLog - 서비스 관리 시스템",
+  title: "제이이 네트웍스 - 서비스 관리 시스템",
   description: "현장 서비스 및 거래처 관리 솔루션",
 };
 
