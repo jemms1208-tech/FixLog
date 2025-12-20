@@ -4,19 +4,27 @@ import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 
-const supabaseAdmin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-);
+// 지연 로딩을 위해 null로 초기화하고 함수 내부에서 생성
+let supabaseAdminInstance: any = null;
+
+function getSupabaseAdmin() {
+    if (!supabaseAdminInstance) {
+        supabaseAdminInstance = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+            { auth: { autoRefreshToken: false, persistSession: false } }
+        );
+    }
+    return supabaseAdminInstance;
+}
 
 export async function resetUserPassword(userId: string, newPassword: string) {
     try {
         // 1. 요청자 권한 확인 (Server Side Session Check)
         const cookieStore = await cookies();
         const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
             {
                 cookies: {
                     get(name: string) { return cookieStore.get(name)?.value },
@@ -38,7 +46,8 @@ export async function resetUserPassword(userId: string, newPassword: string) {
         }
 
         // 2. 권한 확인 후 패스워드 재설정 (Admin Auth API 사용)
-        const { error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+        const adminClient = getSupabaseAdmin();
+        const { error } = await adminClient.auth.admin.updateUserById(userId, {
             password: newPassword
         });
 
@@ -57,8 +66,8 @@ export async function deleteUser(userId: string) {
         // 1. 요청자 권한 확인
         const cookieStore = await cookies();
         const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+            process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
             {
                 cookies: {
                     get(name: string) { return cookieStore.get(name)?.value },
@@ -80,7 +89,8 @@ export async function deleteUser(userId: string) {
         }
 
         // 2. Authentication 계정 삭제 (이때 RLS/FK 설정에 따라 profiles 테이블도 연쇄 삭제됨)
-        const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
+        const adminClient = getSupabaseAdmin();
+        const { error } = await adminClient.auth.admin.deleteUser(userId);
 
         if (error) {
             // 이미 삭제되었거나 다른 문제가 있을 경우

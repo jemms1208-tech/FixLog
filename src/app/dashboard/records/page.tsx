@@ -128,6 +128,19 @@ export default function RecordsPage() {
         }
     }
 
+    async function handleDeleteRecord(id: string) {
+        if (!confirm('이 접수 내역을 정말 삭제하시겠습니까?')) return;
+        try {
+            const { error } = await supabase.from('service_records').delete().eq('id', id);
+            if (error) throw error;
+            showToast('접수 내역이 삭제되었습니다.', 'info');
+            fetchRecords();
+            setViewingRecord(null);
+        } catch (error: any) {
+            showToast(`삭제 오류: ${error.message}`, 'error');
+        }
+    }
+
     function openCompleteModal(record: any) {
         const now = new Date();
         const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
@@ -268,8 +281,8 @@ export default function RecordsPage() {
                         <div className="col-span-2">내용</div>
                         <div className="col-span-2">처리결과</div>
                         <div className="col-span-2">처리일시</div>
-                        <div className="col-span-2 text-center">상태</div>
-                        <div className="col-span-3 text-right">관리</div>
+                        <div className="col-span-1 text-center">상태</div>
+                        <div className="col-span-4 text-right">관리</div>
                     </div>
 
                     {/* 목록 */}
@@ -296,16 +309,16 @@ export default function RecordsPage() {
                                                 ? formatDateTime(record.processed_at)
                                                 : (record.started_at ? formatDateTime(record.started_at) : '-')}
                                         </div>
-                                        <div className="col-span-2 flex justify-center">
-                                            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full uppercase ${status.bg} ${status.color}`}>
+                                        <div className="col-span-1 flex justify-center">
+                                            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full uppercase whitespace-nowrap ${status.bg} ${status.color}`}>
                                                 <status.icon className="w-3 h-3" />
                                                 {status.label}
                                             </span>
                                         </div>
-                                        <div className="col-span-3 flex gap-1 justify-end">
+                                        <div className="col-span-4 flex gap-1 justify-end">
                                             <button
                                                 onClick={() => setEditingRecord({ ...record, client_id: record.client_id || '' })}
-                                                className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
+                                                className="text-[12px] font-medium text-slate-800 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all text-nowrap"
                                             >
                                                 수정
                                             </button>
@@ -313,7 +326,7 @@ export default function RecordsPage() {
                                             {(userRole === 'operator' || userRole === 'admin' || userRole === 'callcenter') && statusKey === 'pending' && (
                                                 <button
                                                     onClick={() => openProcessingModal(record)}
-                                                    className="text-[12px] font-medium text-blue-600 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-all"
+                                                    className="text-[12px] font-medium text-blue-600 px-2 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-all text-nowrap"
                                                 >
                                                     1차 처리
                                                 </button>
@@ -322,9 +335,18 @@ export default function RecordsPage() {
                                             {statusKey !== 'completed' && (
                                                 <button
                                                     onClick={() => openCompleteModal(record)}
-                                                    className="text-[12px] font-medium text-emerald-600 px-3 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-all"
+                                                    className="text-[12px] font-medium text-emerald-600 px-2 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-all text-nowrap"
                                                 >
                                                     완료
+                                                </button>
+                                            )}
+
+                                            {(userRole === 'operator' || userRole === 'admin') && (
+                                                <button
+                                                    onClick={() => handleDeleteRecord(record.id)}
+                                                    className="text-[12px] font-medium text-red-600 px-2 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all shadow-sm text-nowrap"
+                                                >
+                                                    삭제
                                                 </button>
                                             )}
                                         </div>
@@ -618,17 +640,55 @@ export default function RecordsPage() {
                             </div>
                         </div>
 
-                        <div className="pt-4 flex gap-2">
-                            <button
-                                onClick={() => {
-                                    setEditingRecord({ ...viewingRecord, client_id: viewingRecord.client_id || '' });
-                                    setViewingRecord(null);
-                                }}
-                                className="flex-1 btn-outline font-semibold"
-                            >
-                                수정하기
-                            </button>
-                            <button onClick={() => setViewingRecord(null)} className="flex-1 btn-primary font-semibold">닫기</button>
+                        <div className="pt-4 space-y-2">
+                            <div className="flex gap-2">
+                                {(userRole === 'operator' || userRole === 'admin' || userRole === 'callcenter') && (viewingRecord.status === 'pending' || !viewingRecord.status) && (
+                                    <button
+                                        onClick={() => {
+                                            openProcessingModal(viewingRecord);
+                                            setViewingRecord(null);
+                                        }}
+                                        className="flex-1 btn-outline border-blue-200 text-blue-600 font-bold py-3 h-auto hover:bg-blue-50 transition-colors"
+                                    >
+                                        1차 처리
+                                    </button>
+                                )}
+                                {(viewingRecord.status !== 'completed' && viewingRecord.status !== '완료') && (
+                                    <button
+                                        onClick={() => {
+                                            openCompleteModal(viewingRecord);
+                                            setViewingRecord(null);
+                                        }}
+                                        className="flex-1 btn-outline border-emerald-200 text-emerald-600 font-bold py-3 h-auto hover:bg-emerald-50 transition-colors"
+                                    >
+                                        완료
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2">
+                                {(userRole === 'operator' || userRole === 'admin') && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setEditingRecord({ ...viewingRecord, client_id: viewingRecord.client_id || '' });
+                                                setViewingRecord(null);
+                                            }}
+                                            className="flex-1 btn-outline font-bold py-3 h-auto"
+                                        >
+                                            접수 수정
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteRecord(viewingRecord.id)}
+                                            className="flex-1 btn-outline border-red-200 text-red-600 font-bold py-3 h-auto hover:bg-red-50 transition-colors"
+                                        >
+                                            삭제
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+
+                            <button onClick={() => setViewingRecord(null)} className="w-full btn-primary font-bold py-3 h-auto">닫기</button>
                         </div>
                     </div>
                 )}

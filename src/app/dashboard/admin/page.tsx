@@ -28,6 +28,39 @@ const ROLE_LABELS = {
     field: { label: '현장', color: 'text-green-600', bg: 'bg-green-50' },
 };
 
+const ACTION_LABELS = {
+    'CREATE_CLIENT': '거래처 등록',
+    'UPDATE_CLIENT': '거래처 수정',
+    'DELETE_CLIENT': '거래처 삭제',
+    'CREATE_RECORD': '접수 등록',
+    'STATUS_CHANGE': '상태 변경',
+    'UPDATE_RECORD': '내역 수정',
+    'DELETE_USER': '계정 삭제',
+    'PASSWORD_CHANGE': '비밀번호 변경'
+};
+
+const TARGET_LABELS = {
+    'client': '거래처',
+    'record': '접수 내역',
+    'profile': '사용자',
+    'group': '그룹'
+};
+
+const DETAIL_KEY_LABELS = {
+    'name': '상호/이름',
+    'old_name': '이전 이름',
+    'type': '유형',
+    'old_status': '이전 상태',
+    'new_status': '변경 상태',
+    'details': '세부 내용'
+};
+
+const STATUS_LABELS = {
+    'pending': '대기',
+    'processing': '처리중',
+    'completed': '완료'
+};
+
 export default function AdminPage() {
     const router = useRouter();
     const supabase = createClient();
@@ -452,50 +485,66 @@ export default function AdminPage() {
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className="bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-                                        <th className="px-6 py-4">시간</th>
-                                        <th className="px-6 py-4">사용자</th>
-                                        <th className="px-6 py-4">활동</th>
-                                        <th className="px-6 py-4">대상</th>
-                                        <th className="px-6 py-4">상세정보</th>
+                                    <tr className="bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 whitespace-nowrap">
+                                        <th className="px-6 py-4 min-w-[140px]">시간</th>
+                                        <th className="px-6 py-4 min-w-[180px]">사용자</th>
+                                        <th className="px-6 py-4 min-w-[100px]">활동</th>
+                                        <th className="px-6 py-4 min-w-[100px]">대상</th>
+                                        <th className="px-6 py-4 min-w-[300px]">상세정보</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {logs.map(log => (
-                                        <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
-                                            <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
-                                                {new Date(log.created_at).toLocaleString('ko-KR')}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-col">
-                                                    <span className="text-slate-900 font-bold">{log.user_display_name}</span>
-                                                    <span className="text-[10px] text-slate-500">{log.user_email}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-tight
-                                                    ${log.action.includes('CREATE') ? 'bg-emerald-50 text-emerald-600' :
-                                                        log.action.includes('UPDATE') ? 'bg-blue-50 text-blue-600' :
+                                    {logs.map(log => {
+                                        const actionLabel = ACTION_LABELS[log.action as keyof typeof ACTION_LABELS] || log.action;
+                                        const targetLabel = TARGET_LABELS[log.target_type as keyof typeof TARGET_LABELS] || log.target_type;
+
+                                        return (
+                                            <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
+                                                <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
+                                                    {new Date(log.created_at).toLocaleString('ko-KR', {
+                                                        month: 'short',
+                                                        day: 'numeric',
+                                                        hour: '2-digit',
+                                                        minute: '2-digit'
+                                                    })}
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-slate-900 font-bold">{log.user_display_name || '이름 없음'}</span>
+                                                        <span className="text-[10px] text-slate-500 font-normal">@{log.user_email?.split('@')[0]}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight
+                                                        ${log.action.includes('CREATE') ? 'bg-emerald-50 text-emerald-600' :
                                                             log.action.includes('DELETE') ? 'bg-red-50 text-red-600' :
-                                                                'bg-slate-100 text-slate-600'}`}>
-                                                    {log.action}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-500 whitespace-nowrap uppercase">
-                                                {log.target_type}
-                                            </td>
-                                            <td className="px-6 py-4 text-slate-600 font-medium max-w-xs">
-                                                <div className="text-[11px] truncate">
-                                                    {log.details && typeof log.details === 'object' ? (
-                                                        Object.entries(log.details)
-                                                            .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
-                                                            .map(([key, value]) => `${key}: ${value}`)
-                                                            .join(', ')
-                                                    ) : JSON.stringify(log.details)}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                                'bg-blue-50 text-blue-600'}`}>
+                                                        {actionLabel}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <span className="text-slate-500 font-bold text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
+                                                        {targetLabel}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
+                                                    <div className="text-[11px] leading-relaxed">
+                                                        {log.details && typeof log.details === 'object' ? (
+                                                            Object.entries(log.details)
+                                                                .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
+                                                                .map(([key, value]) => {
+                                                                    const k = DETAIL_KEY_LABELS[key as keyof typeof DETAIL_KEY_LABELS] || key;
+                                                                    let v = value as string;
+                                                                    if (key.includes('status')) v = STATUS_LABELS[v as keyof typeof STATUS_LABELS] || v;
+                                                                    return `${k}: ${v}`;
+                                                                })
+                                                                .join(' | ')
+                                                        ) : JSON.stringify(log.details)}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
