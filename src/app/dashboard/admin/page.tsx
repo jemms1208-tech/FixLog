@@ -120,7 +120,7 @@ export default function AdminPage() {
                                                     </p>
                                                 </td>
                                                 <td className="px-6 py-5 text-right">
-                                                    <button className="p-2 rounded-lg hover:bg-background transition-colors text-muted-foreground opacity-0 group-hover:opacity-100">
+                                                    <button className="p-2 rounded-lg hover:bg-background transition-colors text-muted-foreground hover:text-primary">
                                                         <Settings className="w-4 h-4" />
                                                     </button>
                                                 </td>

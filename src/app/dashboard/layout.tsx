@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
     LayoutDashboard,
     Users,
@@ -15,6 +15,7 @@ import {
     Database,
     ShieldCheck
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase';
 
 const MENU_ITEMS = [
     { name: '대시보드', icon: LayoutDashboard, href: '/dashboard' },
@@ -31,6 +32,13 @@ export default function DashboardLayout({
 }) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const pathname = usePathname();
+    const router = useRouter();
+    const supabase = createClient();
+
+    const handleLogout = async () => {
+        await supabase.auth.signOut();
+        router.push('/login');
+    };
 
     return (
         <div className="min-h-screen bg-background flex">
@@ -78,7 +86,10 @@ export default function DashboardLayout({
                         })}
                     </nav>
 
-                    <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-all mt-auto border border-dashed border-transparent hover:border-red-200">
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-3 px-4 py-3 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-all mt-auto border border-dashed border-transparent hover:border-red-200"
+                    >
                         <LogOut className="w-5 h-5" />
                         <span className="font-medium">로그아웃</span>
                     </button>

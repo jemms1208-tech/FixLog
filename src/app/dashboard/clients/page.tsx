@@ -287,7 +287,7 @@ export default function ClientsPage() {
                                             <p className="text-xs text-muted-foreground">{client.equipment}</p>
                                         </td>
                                         <td className="px-6 py-5 text-right">
-                                            <button className="p-2 rounded-lg hover:bg-background transition-colors text-muted-foreground opacity-0 group-hover:opacity-100">
+                                            <button className="p-2 rounded-lg hover:bg-background transition-colors text-muted-foreground hover:text-primary">
                                                 <MoreVertical className="w-5 h-5" />
                                             </button>
                                         </td>
