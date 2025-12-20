@@ -14,16 +14,36 @@ import {
     Loader2
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
+import * as XLSX from 'xlsx';
+import { Modal } from '@/components/Modal';
 
 export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [clients, setClients] = useState<any[]>([]);
+    const [groups, setGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [newClient, setNewClient] = useState({
+        name: '',
+        biz_reg_no: '',
+        phone: '',
+        address: '',
+        van_company: '',
+        equipment: '',
+        group_id: ''
+    });
+
     const supabase = createClient();
 
     useEffect(() => {
         fetchClients();
+        fetchGroups();
     }, []);
+
+    async function fetchGroups() {
+        const { data } = await supabase.from('client_groups').select('*');
+        if (data) setGroups(data);
+    }
 
     async function fetchClients() {
         try {
@@ -51,6 +71,21 @@ export default function ClientsPage() {
         c.phone?.includes(searchTerm)
     );
 
+    async function handleAddClient(e: React.FormEvent) {
+        e.preventDefault();
+        try {
+            const { error } = await supabase.from('clients').insert([newClient]);
+            if (error) throw error;
+            setIsModalOpen(false);
+            fetchClients();
+            setNewClient({
+                name: '', biz_reg_no: '', phone: '', address: '', van_company: '', equipment: '', group_id: ''
+            });
+        } catch (error) {
+            alert('오류가 발생했습니다.');
+        }
+    }
+
     async function handleExportExcel() {
         const dataToExport = clients.map(c => ({
             '상호명': c.name,
@@ -77,16 +112,109 @@ export default function ClientsPage() {
                     <p className="text-muted-foreground text-sm">전체 거래처 목록 및 상세 정보를 관리합니다.</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-input border hover:bg-white transition-all text-sm font-medium">
+                    <button
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-input border hover:bg-white transition-all text-sm font-medium"
+                    >
                         <Download className="w-4 h-4" />
                         엑셀 추출
                     </button>
-                    <button className="btn-premium flex items-center gap-2 text-sm !py-2">
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="btn-premium flex items-center gap-2 text-sm !py-2"
+                    >
                         <Plus className="w-4 h-4" />
                         거래처 추가
                     </button>
                 </div>
             </div>
+
+            {/* Modal */}
+            <Modal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                title="새 거래처 등록"
+            >
+                <form onSubmit={handleAddClient} className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">상호명 *</label>
+                            <input
+                                required
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.name}
+                                onChange={e => setNewClient({ ...newClient, name: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">사업자번호</label>
+                            <input
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.biz_reg_no}
+                                onChange={e => setNewClient({ ...newClient, biz_reg_no: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">전화번호</label>
+                            <input
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.phone}
+                                onChange={e => setNewClient({ ...newClient, phone: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">관리 그룹</label>
+                            <select
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.group_id}
+                                onChange={e => setNewClient({ ...newClient, group_id: e.target.value })}
+                            >
+                                <option value="">그룹 선택 안함</option>
+                                {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                            </select>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">밴사 (VAN)</label>
+                            <input
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.van_company}
+                                onChange={e => setNewClient({ ...newClient, van_company: e.target.value })}
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-muted-foreground ml-1">사용 장비</label>
+                            <input
+                                className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                                value={newClient.equipment}
+                                onChange={e => setNewClient({ ...newClient, equipment: e.target.value })}
+                            />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-sm font-bold text-muted-foreground ml-1">주소</label>
+                        <input
+                            className="w-full px-4 py-3 bg-input border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                            value={newClient.address}
+                            onChange={e => setNewClient({ ...newClient, address: e.target.value })}
+                        />
+                    </div>
+                    <div className="pt-4 flex gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setIsModalOpen(false)}
+                            className="flex-1 py-3 px-6 rounded-2xl border font-bold hover:bg-black/5 transition-all text-foreground"
+                        >
+                            취소
+                        </button>
+                        <button
+                            type="submit"
+                            className="flex-[2] btn-premium text-lg"
+                        >
+                            저장하기
+                        </button>
+                    </div>
+                </form>
+            </Modal>
 
             {/* Filters & Search */}
             <div className="glass p-4 rounded-2xl border shadow-sm flex flex-col md:flex-row items-center gap-4">

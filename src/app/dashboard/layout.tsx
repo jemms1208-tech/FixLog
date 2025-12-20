@@ -12,14 +12,16 @@ import {
     X,
     LogOut,
     ChevronRight,
-    Database
+    Database,
+    ShieldCheck
 } from 'lucide-react';
 
 const MENU_ITEMS = [
     { name: '대시보드', icon: LayoutDashboard, href: '/dashboard' },
     { name: '거래처 관리', icon: Users, href: '/dashboard/clients' },
     { name: '장애/접수 기록', icon: FileText, href: '/dashboard/records' },
-    { name: '시스템 설정', icon: Settings, href: '/dashboard/settings', adminOnly: true },
+    { name: '시스템 관리', icon: ShieldCheck, href: '/dashboard/admin' },
+    { name: '설정', icon: Settings, href: '/dashboard/settings' },
 ];
 
 export default function DashboardLayout({
