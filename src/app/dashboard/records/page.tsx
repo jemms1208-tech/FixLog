@@ -47,6 +47,13 @@ export default function RecordsPage() {
     const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
     const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [clientSearch, setClientSearch] = useState('');
+
+    useEffect(() => {
+        if (isModalOpen || editingRecord) {
+            setClientSearch('');
+        }
+    }, [isModalOpen, editingRecord]);
 
     const supabase = createClient();
     const { showToast } = useToast();
@@ -750,16 +757,33 @@ export default function RecordsPage() {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="새 장애/서비스 접수">
                 <form onSubmit={handleAddRecord} className="space-y-4">
-                    <div className="space-y-8">
-                        <label className="text-sm font-medium block mb-4">거래처 선택 *</label>
+                    <div>
+                        <label className="text-sm font-medium block mb-1">거래처 선택 *</label>
+                        <input
+                            type="text"
+                            placeholder="거래처 검색..."
+                            className="input-field w-full mb-2 text-sm bg-slate-50"
+                            value={clientSearch}
+                            onChange={e => setClientSearch(e.target.value)}
+                        />
                         <select
                             required
                             className="input-field w-full"
                             value={newRecord.client_id}
                             onChange={e => setNewRecord({ ...newRecord, client_id: e.target.value })}
+                            size={5}
                         >
                             <option value="">거래처를 선택하세요</option>
-                            {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            {clientList
+                                .filter((c: any) =>
+                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                )
+                                .map((client: any) => (
+                                    <option key={client.id} value={client.id} className="py-1">
+                                        {client.client_groups?.name ? `(${client.client_groups.name}) ` : ''}{client.name}
+                                    </option>
+                                ))}
                         </select>
                     </div>
 
@@ -807,16 +831,32 @@ export default function RecordsPage() {
                     <form onSubmit={handleUpdateRecord} className="space-y-4">
                         <div>
                             <label className="text-sm font-medium block mb-1">거래처</label>
+                            <input
+                                type="text"
+                                placeholder="거래처 검색..."
+                                className="input-field w-full mb-2 text-sm bg-slate-50"
+                                value={clientSearch}
+                                onChange={e => setClientSearch(e.target.value)}
+                            />
                             <select
                                 className="input-field w-full"
                                 value={editingRecord.client_id || ''}
                                 onChange={e => setEditingRecord({ ...editingRecord, client_id: e.target.value })}
+                                size={5} // 목록이 보이도록 확장
                             >
                                 <option value="">선택 안함</option>
-                                {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {clientList
+                                    .filter((c: any) =>
+                                        c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                        c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                    )
+                                    .map((client: any) => (
+                                        <option key={client.id} value={client.id} className="py-1">
+                                            {client.client_groups?.name ? `(${client.client_groups.name}) ` : ''}{client.name}
+                                        </option>
+                                    ))}
                             </select>
-                        </div>
-                        <div>
+                        </div>        <div>
                             <label className="text-sm font-medium block mb-1">유형</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {(serviceTypes.length > 0 ? serviceTypes.map(t => t.name) : ['장애', '서비스', '기타']).map((t) => (
