@@ -314,9 +314,9 @@ export default function RecordsPage() {
                     target_type: 'record',
                     target_id: data.id,
                     details: {
-                        type: newRecord.type,
-                        client: clientName,
-                        content: newRecord.details
+                        '유형': newRecord.type,
+                        '거래처': clientName,
+                        '내용': newRecord.details
                     }
                 }]);
             }
@@ -362,7 +362,7 @@ export default function RecordsPage() {
                     action: 'UPDATE_RECORD',
                     target_type: 'record',
                     target_id: editingRecord.id,
-                    details: { type: editingRecord.type, client: editingRecord.clients?.name || clientList.find((c: any) => c.id === editingRecord.client_id)?.name }
+                    details: { '유형': editingRecord.type, '거래처': editingRecord.clients?.name || clientList.find((c: any) => c.id === editingRecord.client_id)?.name }
                 }]);
             }
 
@@ -399,7 +399,7 @@ export default function RecordsPage() {
                     action: 'DELETE_RECORD',
                     target_type: 'record',
                     target_id: id,
-                    details: { type: recordToDelete?.type, client: recordToDelete?.clients?.name }
+                    details: { '유형': recordToDelete?.type, '거래처': recordToDelete?.clients?.name }
                 }]);
             }
 
