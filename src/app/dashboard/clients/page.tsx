@@ -164,7 +164,7 @@ export default function ClientsPage() {
             // 기본 쿼리 빌더
             let query = supabase
                 .from('clients')
-                .select(`*, client_groups!inner(name)`, { count: 'exact' });
+                .select(`*, client_groups(name)`, { count: 'exact' });
 
             // 접근 그룹 필터링 (allowed_groups가 비어있으면 전체 접근)
             if (allowedGroups.length > 0) {

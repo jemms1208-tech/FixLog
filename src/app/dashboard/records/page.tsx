@@ -509,12 +509,16 @@ export default function RecordsPage() {
         return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
     }
 
+    function formatClientName(client: any) {
+        if (!client) return '-';
+        const groupName = client.client_groups?.name || (Array.isArray(client.client_groups) && client.client_groups[0]?.name) || '';
+        return groupName ? `(${groupName}) ${client.name}` : client.name;
+    }
+
     async function handleExportExcel() {
         const dataToExport = records.map(r => ({
             '접수일시': new Date(r.reception_at).toLocaleString(),
-            '거래처명': r.clients?.name
-                ? (r.clients.client_groups?.name ? `(${r.clients.client_groups.name}) ${r.clients.name}` : r.clients.name)
-                : '미지정',
+            '거래처명': formatClientName(r.clients),
             '유형': r.type,
             '내용': r.details || '-',
             '처리상태': STATUS_MAP[r.status as keyof typeof STATUS_MAP]?.label || (r.processed_at ? '완료' : '대기'),
@@ -649,9 +653,7 @@ export default function RecordsPage() {
                                             {formatDateTime(record.reception_at)}
                                         </div>
                                         <div className="col-span-2 text-slate-800 truncate">
-                                            {record.clients?.name
-                                                ? (record.clients.client_groups?.name ? `(${record.clients.client_groups.name}) ${record.clients.name}` : record.clients.name)
-                                                : '-'}
+                                            {formatClientName(record.clients)}
                                         </div>
                                         <div className="col-span-1 text-slate-800">{record.type}</div>
                                         <div className="col-span-3 text-slate-800 truncate">{record.details || '-'}</div>
@@ -686,9 +688,7 @@ export default function RecordsPage() {
                                             <div className="flex items-center gap-2">
                                                 <span className={`w-1.5 h-1.5 rounded-full ${statusKey === 'completed' ? 'bg-emerald-500' : statusKey === 'processing' ? 'bg-amber-500' : 'bg-red-500'}`} />
                                                 <span className="font-medium text-slate-800 truncate text-[14px]">
-                                                    {record.clients?.name
-                                                        ? (record.clients.client_groups?.name ? `(${record.clients.client_groups.name}) ${record.clients.name}` : record.clients.name)
-                                                        : '미지정'}
+                                                    {formatClientName(record.clients)}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-[14px] text-slate-800 font-medium">
@@ -712,46 +712,48 @@ export default function RecordsPage() {
                     </div>
 
                     {/* 페이지네이션 */}
-                    {totalPages > 1 && (
-                        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
-                            <div className="text-sm text-slate-500">
-                                총 <span className="font-bold text-slate-700">{totalCount.toLocaleString()}</span>건 중 {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)}건
+                    {
+                        totalPages > 1 && (
+                            <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                                <div className="text-sm text-slate-500">
+                                    총 <span className="font-bold text-slate-700">{totalCount.toLocaleString()}</span>건 중 {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)}건
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setCurrentPage(1)}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                    >
+                                        처음
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                        disabled={currentPage === 1}
+                                        className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                    >
+                                        이전
+                                    </button>
+                                    <span className="px-4 py-1.5 text-sm font-bold text-blue-600 bg-blue-50 rounded-lg">
+                                        {currentPage} / {totalPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                    >
+                                        다음
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        disabled={currentPage === totalPages}
+                                        className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                    >
+                                        끝
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => setCurrentPage(1)}
-                                    disabled={currentPage === 1}
-                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
-                                >
-                                    처음
-                                </button>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                    disabled={currentPage === 1}
-                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
-                                >
-                                    이전
-                                </button>
-                                <span className="px-4 py-1.5 text-sm font-bold text-blue-600 bg-blue-50 rounded-lg">
-                                    {currentPage} / {totalPages}
-                                </span>
-                                <button
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                    disabled={currentPage === totalPages}
-                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
-                                >
-                                    다음
-                                </button>
-                                <button
-                                    onClick={() => setCurrentPage(totalPages)}
-                                    disabled={currentPage === totalPages}
-                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
-                                >
-                                    끝
-                                </button>
-                            </div>
-                        </div>
-                    )}
+                        )
+                    }
                 </div>
             )}
 
