@@ -103,11 +103,11 @@ export default function RecordsPage() {
         if (user) {
             const { data: profile } = await supabase.from('profiles').select('allowed_groups').eq('id', user.id).single();
 
-            let query = supabase.from('clients').select('id, name, group_id, client_groups!inner(name)');
+            let query = supabase.from('clients').select('id, name, group_id, client_groups (name)');
 
             // 접근 그룹 필터링
             if (profile?.allowed_groups && profile.allowed_groups.length > 0) {
-                query = query.in('client_groups.name', profile.allowed_groups);
+                query = query.in('group_id', profile.allowed_groups);
             }
 
             const { data } = await query;
@@ -147,8 +147,8 @@ export default function RecordsPage() {
             if (allowedGroups.length > 0) {
                 const { data: allowedClients } = await supabase
                     .from('clients')
-                    .select('id, client_groups!inner(name)')
-                    .in('client_groups.name', allowedGroups);
+                    .select('id')
+                    .in('group_id', allowedGroups);
                 allowedClientIds = allowedClients?.map(c => c.id) || [];
             }
 

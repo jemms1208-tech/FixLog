@@ -168,8 +168,7 @@ export default function ClientsPage() {
 
             // 접근 그룹 필터링 (allowed_groups가 비어있으면 전체 접근)
             if (allowedGroups.length > 0) {
-                // client_groups 테이블의 name 컬럼 필터링 (allowedGroups는 이름 배열임)
-                query = query.in('client_groups.name', allowedGroups);
+                query = query.in('group_id', allowedGroups);
             }
 
             // 키:값 검색 파싱
