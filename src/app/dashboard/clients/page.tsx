@@ -78,6 +78,7 @@ export default function ClientsPage() {
     // 사용자 접근 가능 그룹
     const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
     const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [newClient, setNewClient] = useState({
         name: '',
@@ -214,6 +215,8 @@ export default function ClientsPage() {
 
     async function handleAddClient(e: React.FormEvent) {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const clientData = {
                 ...newClient,
@@ -227,12 +230,15 @@ export default function ClientsPage() {
             showToast('거래처가 성공적으로 등록되었습니다.', 'success');
         } catch (error: any) {
             showToast(`등록 실패: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
     async function handleUpdateClient(e: React.FormEvent) {
         e.preventDefault();
-        if (!editingClient) return;
+        if (!editingClient || isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const { error } = await supabase
                 .from('clients')
@@ -253,11 +259,16 @@ export default function ClientsPage() {
             fetchClients();
         } catch (error: any) {
             showToast(`수정 실패: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
     async function handleDeleteClient(id: string) {
+        if (isSubmitting) return;
         if (!confirm('정말 이 거래처를 삭제하시겠습니까?')) return;
+
+        setIsSubmitting(true);
         try {
             const { error } = await supabase.from('clients').delete().eq('id', id);
             if (error) throw error;
@@ -267,6 +278,8 @@ export default function ClientsPage() {
             setEditingClient(null);
         } catch (error: any) {
             showToast(`삭제 실패: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -463,7 +476,7 @@ export default function ClientsPage() {
                     </div>
                     <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">주소</label>
-                        <input className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} />
+                        <textarea rows={3} className="input-field w-full text-[14px] font-medium text-slate-800 resize-none" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -495,8 +508,8 @@ export default function ClientsPage() {
                         </div>
                     </div>
                     <div className="pt-2 flex gap-2">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline flex-1">취소</button>
-                        <button type="submit" className="btn-primary flex-1">저장</button>
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                        <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '저장 중...' : '저장'}</button>
                     </div>
                 </form>
             </Modal>
@@ -610,8 +623,9 @@ export default function ClientsPage() {
                         </div>
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">주소</label>
-                            <input
-                                className="input-field w-full text-[14px] font-medium text-slate-800"
+                            <textarea
+                                rows={3}
+                                className="input-field w-full text-[14px] font-medium text-slate-800 resize-none"
                                 value={editingClient.address || ''}
                                 onChange={e => setEditingClient({ ...editingClient, address: e.target.value })}
                             />
@@ -658,8 +672,8 @@ export default function ClientsPage() {
                             </div>
                         </div>
                         <div className="pt-2 flex gap-2">
-                            <button type="button" onClick={() => setEditingClient(null)} className="btn-outline flex-1">취소</button>
-                            <button type="submit" className="btn-primary flex-1">수정완료</button>
+                            <button type="button" onClick={() => setEditingClient(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                            <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '수정 중...' : '수정완료'}</button>
                         </div>
                     </form>
                 )}

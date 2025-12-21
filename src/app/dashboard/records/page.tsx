@@ -2,7 +2,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check } from 'lucide-react';
+import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check, Calendar } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
@@ -38,9 +38,15 @@ export default function RecordsPage() {
     const [totalCount, setTotalCount] = useState(0);
     const PAGE_SIZE = 20;
 
+    // 날짜 범위 필터
+    const [receptionDateRange, setReceptionDateRange] = useState<{ start: string, end: string }>({ start: '', end: '' });
+    const [processedDateRange, setProcessedDateRange] = useState<{ start: string, end: string }>({ start: '', end: '' });
+    const [showDateFilter, setShowDateFilter] = useState(false);
+
     // 사용자 접근 가능 그룹
     const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
     const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const supabase = createClient();
     const { showToast } = useToast();
@@ -65,7 +71,7 @@ export default function RecordsPage() {
         if (allowedGroupsLoaded) {
             fetchRecords();
         }
-    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded]);
+    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded, receptionDateRange, processedDateRange]);
 
 
     async function fetchUserRole() {
@@ -226,6 +232,12 @@ export default function RecordsPage() {
                 query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
             }
 
+            // 날짜 범위 필터 (버튼/기간 설정)
+            if (receptionDateRange.start) query = query.gte('reception_at', receptionDateRange.start);
+            if (receptionDateRange.end) query = query.lte('reception_at', receptionDateRange.end + ' 23:59:59');
+            if (processedDateRange.start) query = query.gte('processed_at', processedDateRange.start);
+            if (processedDateRange.end) query = query.lte('processed_at', processedDateRange.end + ' 23:59:59');
+
             // 페이지네이션 및 정렬 적용
             const from = (currentPage - 1) * PAGE_SIZE;
             const to = from + PAGE_SIZE - 1;
@@ -250,6 +262,8 @@ export default function RecordsPage() {
 
     async function handleAddRecord(e: React.FormEvent) {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const recordData = {
                 ...newRecord,
@@ -266,12 +280,15 @@ export default function RecordsPage() {
             showToast('접수가 등록되었습니다.', 'success');
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
     async function handleUpdateRecord(e: React.FormEvent) {
         e.preventDefault();
-        if (!editingRecord) return;
+        if (!editingRecord || isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const { error } = await supabase
                 .from('service_records')
@@ -307,11 +324,16 @@ export default function RecordsPage() {
             fetchRecords();
         } catch (error: any) {
             showToast(`수정 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
     async function handleDeleteRecord(id: string) {
+        if (isSubmitting) return;
         if (!confirm('이 접수 내역을 정말 삭제하시겠습니까?')) return;
+
+        setIsSubmitting(true);
         try {
             // 삭제 전에 내역 정보 가져오기
             const recordToDelete = records.find(r => r.id === id);
@@ -339,6 +361,8 @@ export default function RecordsPage() {
             setViewingRecord(null);
         } catch (error: any) {
             showToast(`삭제 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -355,7 +379,8 @@ export default function RecordsPage() {
 
     async function handleCompleteSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!completingRecord) return;
+        if (!completingRecord || isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const { error } = await supabase
                 .from('service_records')
@@ -371,6 +396,8 @@ export default function RecordsPage() {
             fetchRecords();
         } catch (error: any) {
             showToast(`완료 처리 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -387,7 +414,8 @@ export default function RecordsPage() {
 
     async function handleProcessingSubmit(e: React.FormEvent) {
         e.preventDefault();
-        if (!processingRecord) return;
+        if (!processingRecord || isSubmitting) return;
+        setIsSubmitting(true);
         try {
             const { error } = await supabase
                 .from('service_records')
@@ -403,6 +431,8 @@ export default function RecordsPage() {
             fetchRecords();
         } catch (error: any) {
             showToast(`처리 시작 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -456,16 +486,61 @@ export default function RecordsPage() {
                 </div>
             </div>
 
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                    type="text"
-                    placeholder="검색어 입력 또는 거래처:제이이, 유형:장애, 상태:대기"
-                    className="input-field"
-                    style={{ paddingLeft: '2.5rem' }}
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                />
+            <div className="flex flex-col gap-2">
+                <div className="flex gap-2 relative">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input
+                            type="text"
+                            placeholder="검색어 입력 또는 거래처:제이이, 유형:장애, 상태:대기"
+                            className="input-field w-full"
+                            style={{ paddingLeft: '2.5rem' }}
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+                    <button
+                        onClick={() => setShowDateFilter(!showDateFilter)}
+                        className={`btn-outline px-3 transition-colors ${showDateFilter ? 'bg-slate-100 border-slate-300' : ''}`}
+                        title="기간 설정"
+                    >
+                        <Calendar className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {showDateFilter && (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid md:grid-cols-2 gap-4 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">접수일시</label>
+                            <div className="flex gap-2 items-center">
+                                <input type="date" className="input-field text-sm flex-1 bg-white" value={receptionDateRange.start} onChange={e => setReceptionDateRange({ ...receptionDateRange, start: e.target.value })} />
+                                <span className="text-slate-400">~</span>
+                                <input type="date" className="input-field text-sm flex-1 bg-white" value={receptionDateRange.end} onChange={e => setReceptionDateRange({ ...receptionDateRange, end: e.target.value })} />
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-slate-500 uppercase">처리일시</label>
+                            <div className="flex gap-2 items-center">
+                                <input type="date" className="input-field text-sm flex-1 bg-white" value={processedDateRange.start} onChange={e => setProcessedDateRange({ ...processedDateRange, start: e.target.value })} />
+                                <span className="text-slate-400">~</span>
+                                <input type="date" className="input-field text-sm flex-1 bg-white" value={processedDateRange.end} onChange={e => setProcessedDateRange({ ...processedDateRange, end: e.target.value })} />
+                            </div>
+                        </div>
+                        {(receptionDateRange.start || receptionDateRange.end || processedDateRange.start || processedDateRange.end) && (
+                            <div className="md:col-span-2 flex justify-end">
+                                <button
+                                    onClick={() => {
+                                        setReceptionDateRange({ start: '', end: '' });
+                                        setProcessedDateRange({ start: '', end: '' });
+                                    }}
+                                    className="text-xs text-slate-500 hover:text-slate-700 underline"
+                                >
+                                    기간 필터 초기화
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
             {loading ? (
@@ -647,8 +722,8 @@ export default function RecordsPage() {
                     </div>
 
                     <div className="pt-2 flex gap-2">
-                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline flex-1">취소</button>
-                        <button type="submit" className="btn-primary flex-1">저장</button>
+                        <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                        <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '저장 중...' : '저장'}</button>
                     </div>
                 </form>
             </Modal>
@@ -689,7 +764,7 @@ export default function RecordsPage() {
                         <div>
                             <label className="text-sm font-medium block mb-1">상세 내용</label>
                             <textarea
-                                rows={2}
+                                rows={4}
                                 className="input-field w-full resize-none"
                                 value={editingRecord.details || ''}
                                 onChange={e => setEditingRecord({ ...editingRecord, details: e.target.value })}
@@ -733,8 +808,8 @@ export default function RecordsPage() {
                             </div>
                         </div>
                         <div className="pt-2 flex gap-2">
-                            <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1">취소</button>
-                            <button type="submit" className="btn-primary flex-1">수정</button>
+                            <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                            <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '수정 중...' : '수정'}</button>
                         </div>
                     </form>
                 )}
@@ -764,8 +839,8 @@ export default function RecordsPage() {
                             />
                         </div>
                         <div className="pt-2 flex gap-2">
-                            <button type="button" onClick={() => setCompletingRecord(null)} className="btn-outline flex-1">취소</button>
-                            <button type="submit" className="btn-primary flex-1">완료</button>
+                            <button type="button" onClick={() => setCompletingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                            <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '완료 중...' : '완료'}</button>
                         </div>
                     </form>
                 )}
@@ -796,8 +871,8 @@ export default function RecordsPage() {
                             />
                         </div>
                         <div className="pt-2 flex gap-2">
-                            <button type="button" onClick={() => setProcessingRecord(null)} className="btn-outline flex-1">취소</button>
-                            <button type="submit" className="btn-primary flex-1">저장</button>
+                            <button type="button" onClick={() => setProcessingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                            <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '저장 중...' : '저장'}</button>
                         </div>
                     </form>
                 )}
@@ -841,13 +916,24 @@ export default function RecordsPage() {
                             <div className="space-y-1 border-b border-slate-100 pb-2">
                                 <label className="text-[11px] font-medium text-slate-800 uppercase block mb-1">처리 결과</label>
                                 <p className="text-[14px] font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">{viewingRecord.result || '아직 처리 결과가 없습니다.'}</p>
-                                {viewingRecord.processed_at && (
-                                    <p className="text-[10px] text-slate-800 mt-2 font-mono">완료일시: {new Date(viewingRecord.processed_at).toLocaleString()}</p>
-                                )}
-                                {viewingRecord.started_at && !viewingRecord.processed_at && (
-                                    <p className="text-[10px] text-slate-800 mt-2 font-mono">처리시작: {new Date(viewingRecord.started_at).toLocaleString()}</p>
-                                )}
                             </div>
+
+                            {(viewingRecord.started_at || viewingRecord.processed_at) && (
+                                <div className="grid grid-cols-2 gap-4 border-b border-slate-100 pb-2">
+                                    {viewingRecord.started_at && (
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-medium text-slate-800 uppercase">처리 시작</label>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{new Date(viewingRecord.started_at).toLocaleString()}</p>
+                                        </div>
+                                    )}
+                                    {viewingRecord.processed_at && (
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-medium text-slate-800 uppercase">처리 완료</label>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{new Date(viewingRecord.processed_at).toLocaleString()}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div className="pt-4 space-y-2">
