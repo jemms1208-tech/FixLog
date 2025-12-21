@@ -5,7 +5,8 @@ CREATE TABLE IF NOT EXISTS public.notices (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
   title TEXT NOT NULL,
   content TEXT NOT NULL,
-  author_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  author_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  author_name TEXT, -- 작성자 삭제 시에도 이름 보존
   allowed_roles TEXT[] DEFAULT '{operator,admin,callcenter,field}' -- 기본적으로 전체 공개
 );
 

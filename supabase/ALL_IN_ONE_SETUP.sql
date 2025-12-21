@@ -35,19 +35,22 @@ CREATE TABLE IF NOT EXISTS public.clients (
   contact_person TEXT,
   van_company TEXT,
   equipment TEXT,
-  group_id UUID REFERENCES client_groups(id)
+  group_id UUID REFERENCES client_groups(id) ON DELETE SET NULL,
+  group_name TEXT -- 그룹 삭제 시에도 이름 보존
 );
 
 CREATE TABLE IF NOT EXISTS public.service_records (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
-  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  client_name TEXT, -- 거래처 삭제 시에도 이름 보존
   reception_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
   type TEXT CHECK (type IN ('신규', '사업자변경', '장애', '용지요청', '메뉴수정', '기타')),
   details TEXT,
   processed_at TIMESTAMP WITH TIME ZONE,
   result TEXT,
-  technician_id UUID REFERENCES auth.users(id)
+  technician_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  technician_name TEXT -- 기사 삭제 시에도 이름 보존
 );
 
 -- 3. RLS 활성화

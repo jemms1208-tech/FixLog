@@ -25,20 +25,23 @@ CREATE TABLE clients (
   contact_person TEXT,
   van_company TEXT, -- 밴사
   equipment TEXT, -- 장비
-  group_id UUID REFERENCES client_groups(id)
+  group_id UUID REFERENCES client_groups(id) ON DELETE SET NULL,
+  group_name TEXT -- 그룹 삭제 시에도 이름 보존
 );
 
 -- 장애/접수 기록 (Service/Failure Records)
 CREATE TABLE service_records (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
-  client_id UUID REFERENCES clients(id) ON DELETE CASCADE,
+  client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  client_name TEXT, -- 거래처 삭제 시에도 이름 보존
   reception_at TIMESTAMP WITH TIME ZONE DEFAULT now(), -- 접수일시
   type TEXT CHECK (type IN ('신규', '사업자변경', '장애', '용지요청', '메뉴수정', '기타')), -- 접수내용
   details TEXT, -- 장애내용
   processed_at TIMESTAMP WITH TIME ZONE, -- 처리일시
   result TEXT, -- 처리내용
-  technician_id UUID REFERENCES auth.users(id)
+  technician_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  technician_name TEXT -- 기사 삭제 시에도 이름 보존
 );
 
 -- RLS (Row Level Security) 설정
