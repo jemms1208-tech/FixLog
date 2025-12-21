@@ -114,14 +114,12 @@ export default function ClientsPage() {
         }
     }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded]);
 
-
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
             const { data: profile } = await supabase.from('profiles').select('role, allowed_groups').eq('id', user.id).single();
             if (profile) {
                 setUserRole(profile.role);
-                // allowed_groups가 비어있거나 없으면 전체 접근 가능
                 setAllowedGroups(profile.allowed_groups || []);
             }
         }
@@ -132,6 +130,7 @@ export default function ClientsPage() {
         const { data } = await supabase.from('client_groups').select('*');
         if (data) setGroups(data);
     }
+
 
     // 키:값 검색 파싱 함수
     const parseSearchQuery = (query: string) => {
@@ -172,6 +171,7 @@ export default function ClientsPage() {
 
             // 키:값 검색 파싱
             const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
+
 
             // 키:값 필터 적용
             if (filters['상호']) query = query.ilike('name', `%${filters['상호']}%`);
