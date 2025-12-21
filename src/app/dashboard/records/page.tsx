@@ -232,11 +232,36 @@ export default function RecordsPage() {
                 query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
             }
 
-            // 날짜 범위 필터 (버튼/기간 설정)
-            if (receptionDateRange.start) query = query.gte('reception_at', receptionDateRange.start);
-            if (receptionDateRange.end) query = query.lte('reception_at', receptionDateRange.end + ' 23:59:59');
-            if (processedDateRange.start) query = query.gte('processed_at', processedDateRange.start);
-            if (processedDateRange.end) query = query.lte('processed_at', processedDateRange.end + ' 23:59:59');
+            // 날짜 범위 필터 (UTC ISO 변환으로 정확한 시간 비교)
+            if (receptionDateRange.start) {
+                const startDate = new Date(receptionDateRange.start);
+                // 로컬 00:00:00 -> UTC
+                query = query.gte('reception_at', startDate.toISOString());
+            }
+            if (receptionDateRange.end) {
+                const endDate = new Date(receptionDateRange.end);
+                endDate.setHours(23, 59, 59, 999);
+                // 로컬 23:59:59 -> UTC
+                query = query.lte('reception_at', endDate.toISOString());
+            }
+
+            // 처리일시 필터: 처리일시(processed_at) 검색 시 처리중(started_at)인 건도 포함
+            if (processedDateRange.start || processedDateRange.end) {
+                const startISO = processedDateRange.start
+                    ? new Date(processedDateRange.start).toISOString()
+                    : '1970-01-01T00:00:00.000Z';
+
+                let endISO = '9999-12-31T23:59:59.999Z';
+                if (processedDateRange.end) {
+                    const endDate = new Date(processedDateRange.end);
+                    endDate.setHours(23, 59, 59, 999);
+                    endISO = endDate.toISOString();
+                }
+
+                // (완료일시가 기간 내) OR (시작일시가 기간 내)
+                // Supabase OR syntax with AND groups
+                query = query.or(`and(processed_at.gte.${startISO},processed_at.lte.${endISO}),and(started_at.gte.${startISO},started_at.lte.${endISO})`);
+            }
 
             // 페이지네이션 및 정렬 적용
             const from = (currentPage - 1) * PAGE_SIZE;
@@ -269,11 +294,33 @@ export default function RecordsPage() {
                 ...newRecord,
                 client_id: newRecord.client_id || null
             };
-            const { error } = await supabase.from('service_records').insert([recordData]);
+            const { data, error } = await supabase.from('service_records').insert([recordData]).select().single();
             if (error) {
                 console.error('Insert error:', error);
                 throw error;
             }
+
+            // 활동 로그 기록
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
+                const clientName = clientList.find((c: any) => c.id === newRecord.client_id)?.name || '미지정';
+
+                await supabase.from('activity_logs').insert([{
+                    user_id: user.id,
+                    user_email: profile?.email,
+                    user_display_name: profile?.display_name,
+                    action: 'CREATE_RECORD',
+                    target_type: 'record',
+                    target_id: data.id,
+                    details: {
+                        type: newRecord.type,
+                        client: clientName,
+                        content: newRecord.details
+                    }
+                }]);
+            }
+
             setIsModalOpen(false);
             fetchRecords();
             setNewRecord({ client_id: '', type: '장애', details: '' });
