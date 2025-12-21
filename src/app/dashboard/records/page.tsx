@@ -96,11 +96,11 @@ export default function RecordsPage() {
         if (user) {
             const { data: profile } = await supabase.from('profiles').select('allowed_groups').eq('id', user.id).single();
 
-            let query = supabase.from('clients').select('id, name, group_id');
+            let query = supabase.from('clients').select('id, name, group_id, client_groups!inner(name)');
 
             // 접근 그룹 필터링
             if (profile?.allowed_groups && profile.allowed_groups.length > 0) {
-                query = query.in('group_id', profile.allowed_groups);
+                query = query.in('client_groups.name', profile.allowed_groups);
             }
 
             const { data } = await query;
@@ -140,15 +140,15 @@ export default function RecordsPage() {
             if (allowedGroups.length > 0) {
                 const { data: allowedClients } = await supabase
                     .from('clients')
-                    .select('id')
-                    .in('group_id', allowedGroups);
+                    .select('id, client_groups!inner(name)')
+                    .in('client_groups.name', allowedGroups);
                 allowedClientIds = allowedClients?.map(c => c.id) || [];
             }
 
             // 기본 쿼리 빌더
             let query = supabase
                 .from('service_records')
-                .select(`*, clients (name, group_id)`, { count: 'exact' });
+                .select(`*, clients (name, group_id, client_groups (name))`, { count: 'exact' });
 
             // 접근 그룹 필터링 (해당 그룹의 거래처 내역만 조회)
             if (allowedClientIds !== null) {
@@ -505,7 +505,9 @@ export default function RecordsPage() {
     async function handleExportExcel() {
         const dataToExport = records.map(r => ({
             '접수일시': new Date(r.reception_at).toLocaleString(),
-            '거래처명': r.clients?.name || '미지정',
+            '거래처명': r.clients?.name
+                ? (r.clients.client_groups?.name ? `(${r.clients.client_groups.name}) ${r.clients.name}` : r.clients.name)
+                : '미지정',
             '유형': r.type,
             '내용': r.details,
             '처리상태': STATUS_MAP[r.status as keyof typeof STATUS_MAP]?.label || (r.processed_at ? '완료' : '대기'),
@@ -622,7 +624,9 @@ export default function RecordsPage() {
                                             {formatDateTime(record.reception_at)}
                                         </div>
                                         <div className="col-span-2 text-slate-800 truncate">
-                                            {record.clients?.name || '-'}
+                                            {record.clients?.name
+                                                ? (record.clients.client_groups?.name ? `(${record.clients.client_groups.name}) ${record.clients.name}` : record.clients.name)
+                                                : '-'}
                                         </div>
                                         <div className="col-span-1 text-slate-800">{record.type}</div>
                                         <div className="col-span-3 text-slate-800 truncate">{record.details || '-'}</div>
@@ -656,7 +660,11 @@ export default function RecordsPage() {
                                         <div className="flex flex-col gap-1 min-w-0 flex-1">
                                             <div className="flex items-center gap-2">
                                                 <span className={`w-1.5 h-1.5 rounded-full ${statusKey === 'completed' ? 'bg-emerald-500' : statusKey === 'processing' ? 'bg-amber-500' : 'bg-red-500'}`} />
-                                                <span className="font-medium text-slate-800 truncate text-[14px]">{record.clients?.name || '미지정'}</span>
+                                                <span className="font-medium text-slate-800 truncate text-[14px]">
+                                                    {record.clients?.name
+                                                        ? (record.clients.client_groups?.name ? `(${record.clients.client_groups.name}) ${record.clients.name}` : record.clients.name)
+                                                        : '미지정'}
+                                                </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-[14px] text-slate-800 font-medium">
                                                 <span className="whitespace-nowrap">{record.type}</span>
