@@ -69,6 +69,17 @@ export default function LoginPage() {
                 return;
             }
 
+            // 로그인 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: authData.user.id,
+                user_email: profile.email,
+                user_display_name: profile.display_name,
+                action: 'LOGIN',
+                target_type: 'auth',
+                target_id: authData.user.id,
+                details: { username: profile.username }
+            }]);
+
             router.push('/dashboard');
         }
     };
@@ -121,11 +132,17 @@ export default function LoginPage() {
                     </button>
                 </form>
 
-                <div className="text-center pt-2">
+                <div className="text-center pt-2 space-y-2">
                     <p className="text-sm text-slate-500">
                         계정이 없으신가요? {' '}
                         <Link href="/signup" className="text-blue-600 font-bold hover:underline underline-offset-4">
                             회원가입
+                        </Link>
+                    </p>
+                    <p className="text-xs text-slate-400">
+                        비밀번호를 잊으셨나요? {' '}
+                        <Link href="/forgot-password" className="text-slate-500 font-medium hover:underline underline-offset-4">
+                            비밀번호 초기화 안내
                         </Link>
                     </p>
                 </div>

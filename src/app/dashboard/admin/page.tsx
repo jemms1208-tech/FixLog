@@ -35,15 +35,43 @@ const ACTION_LABELS = {
     'CREATE_RECORD': '접수 등록',
     'STATUS_CHANGE': '상태 변경',
     'UPDATE_RECORD': '내역 수정',
+    'DELETE_RECORD': '접수 삭제',
     'DELETE_USER': '계정 삭제',
-    'PASSWORD_CHANGE': '비밀번호 변경'
+    'PASSWORD_CHANGE': '비밀번호 변경',
+    'APPROVE_USER': '사용자 승인',
+    'ROLE_CHANGE': '역할 변경',
+    'UPDATE_PROFILE': '정보 수정',
+    'UPDATE_PERMISSION': '권한 변경',
+    'CREATE_NOTICE': '공지 등록',
+    'UPDATE_NOTICE': '공지 수정',
+    'DELETE_NOTICE': '공지 삭제',
+    'CREATE_GROUP': '그룹 추가',
+    'DELETE_GROUP': '그룹 삭제',
+    'CREATE_SERVICE_TYPE': '유형 추가',
+    'DELETE_SERVICE_TYPE': '유형 삭제',
+    'LOGIN': '로그인',
+    'LOGOUT': '로그아웃'
 };
 
 const TARGET_LABELS = {
     'client': '거래처',
     'record': '접수 내역',
     'profile': '사용자',
-    'group': '그룹'
+    'group': '그룹',
+    'notice': '공지사항',
+    'service_type': '서비스 유형',
+    'auth': '인증'
+};
+
+// 필터링을 위한 카테고리
+const LOG_CATEGORIES = {
+    'all': '전체',
+    'client': '거래처',
+    'record': '접수 내역',
+    'profile': '사용자',
+    'notice': '공지사항',
+    'system': '시스템 설정',
+    'auth': '인증'
 };
 
 const DETAIL_KEY_LABELS = {
@@ -52,7 +80,13 @@ const DETAIL_KEY_LABELS = {
     'type': '유형',
     'old_status': '이전 상태',
     'new_status': '변경 상태',
-    'details': '세부 내용'
+    'details': '세부 내용',
+    'old_role': '이전 역할',
+    'new_role': '변경 역할',
+    'email': '이메일',
+    'permission': '권한',
+    'title': '제목',
+    'client': '거래처'
 };
 
 const STATUS_LABELS = {
@@ -75,6 +109,7 @@ export default function AdminPage() {
     // Tabs
     const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
     const [logs, setLogs] = useState<any[]>([]);
+    const [logFilter, setLogFilter] = useState<string>('all');
     const [isLogsLoading, setIsLogsLoading] = useState(false);
 
     // Modals
@@ -155,8 +190,20 @@ export default function AdminPage() {
         e.preventDefault();
         if (!newGroupName.trim()) return;
         try {
-            const { error } = await supabase.from('client_groups').insert([{ name: newGroupName }]);
+            const { data, error } = await supabase.from('client_groups').insert([{ name: newGroupName }]).select().single();
             if (error) throw error;
+
+            // 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'CREATE_GROUP',
+                target_type: 'group',
+                target_id: data?.id,
+                details: { name: newGroupName }
+            }]);
+
             setNewGroupName('');
             showToast('새 그룹이 추가되었습니다.', 'success');
             fetchAdminData();
@@ -168,8 +215,23 @@ export default function AdminPage() {
     async function handleDeleteGroup(id: string) {
         if (!confirm('그룹을 삭제하시겠습니까?')) return;
         try {
+            // 삭제 전에 그룹명 가져오기
+            const groupToDelete = groups.find(g => g.id === id);
+
             const { error } = await supabase.from('client_groups').delete().eq('id', id);
             if (error) throw error;
+
+            // 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'DELETE_GROUP',
+                target_type: 'group',
+                target_id: id,
+                details: { name: groupToDelete?.name }
+            }]);
+
             showToast('그룹이 삭제되었습니다.', 'success');
             fetchAdminData();
         } catch (error: any) {
@@ -181,11 +243,23 @@ export default function AdminPage() {
         e.preventDefault();
         if (!newServiceType.trim()) return;
         try {
-            const { error } = await supabase.from('service_types').insert([{
+            const { data, error } = await supabase.from('service_types').insert([{
                 name: newServiceType,
                 sort_order: serviceTypes.length
-            }]);
+            }]).select().single();
             if (error) throw error;
+
+            // 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'CREATE_SERVICE_TYPE',
+                target_type: 'service_type',
+                target_id: data?.id,
+                details: { name: newServiceType }
+            }]);
+
             setNewServiceType('');
             showToast('서비스 유형이 추가되었습니다.', 'success');
             fetchAdminData();
@@ -197,8 +271,23 @@ export default function AdminPage() {
     async function handleDeleteServiceType(id: string) {
         if (!confirm('서비스 유형을 삭제하시겠습니까?')) return;
         try {
+            // 삭제 전에 유형명 가져오기
+            const typeToDelete = serviceTypes.find(t => t.id === id);
+
             const { error } = await supabase.from('service_types').delete().eq('id', id);
             if (error) throw error;
+
+            // 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'DELETE_SERVICE_TYPE',
+                target_type: 'service_type',
+                target_id: id,
+                details: { name: typeToDelete?.name }
+            }]);
+
             showToast('서비스 유형이 삭제되었습니다.', 'success');
             fetchAdminData();
         } catch (error: any) {
@@ -216,8 +305,21 @@ export default function AdminPage() {
         try {
             const result = await resetUserPassword(passwordTarget.id, newPassword);
             if (result.success) {
+                // 활동 로그 기록
+                const targetProfile = profiles.find(p => p.id === passwordTarget.id);
+                await supabase.from('activity_logs').insert([{
+                    user_id: currentUserId,
+                    user_email: profiles.find(p => p.id === currentUserId)?.email,
+                    user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                    action: 'PASSWORD_CHANGE',
+                    target_type: 'profile',
+                    target_id: passwordTarget.id,
+                    details: { name: targetProfile?.display_name || targetProfile?.username }
+                }]);
                 showToast('비밀번호가 변경되었습니다.', 'success');
                 setIsPasswordModalOpen(false);
+                setNewPassword('');
+                setConfirmPassword('');
             } else {
                 showToast(`비밀번호 변경 실패: ${result.error}`, 'error');
             }
@@ -241,6 +343,18 @@ export default function AdminPage() {
                 .eq('id', editingProfile.id);
 
             if (error) throw error;
+
+            // 활동 로그 기록
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'UPDATE_PROFILE',
+                target_type: 'profile',
+                target_id: editingProfile.id,
+                details: { name: editingProfile.display_name || editingProfile.username }
+            }]);
+
             showToast('사용자 정보가 수정되었습니다.', 'success');
             setIsProfileModalOpen(false);
             fetchAdminData();
@@ -341,8 +455,20 @@ export default function AdminPage() {
                                                                 <select
                                                                     value={profile.role || 'field'}
                                                                     onChange={async (e) => {
-                                                                        const { error } = await supabase.from('profiles').update({ role: e.target.value }).eq('id', profile.id);
+                                                                        const oldRole = profile.role;
+                                                                        const newRole = e.target.value;
+                                                                        const { error } = await supabase.from('profiles').update({ role: newRole }).eq('id', profile.id);
                                                                         if (!error) {
+                                                                            // 활동 로그 기록
+                                                                            await supabase.from('activity_logs').insert([{
+                                                                                user_id: currentUserId,
+                                                                                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                                                                                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                                                                                action: 'ROLE_CHANGE',
+                                                                                target_type: 'profile',
+                                                                                target_id: profile.id,
+                                                                                details: { name: profile.display_name || profile.username, old_role: oldRole, new_role: newRole }
+                                                                            }]);
                                                                             showToast('역할이 변경되었습니다.', 'success');
                                                                             fetchAdminData();
                                                                         }
@@ -390,6 +516,16 @@ export default function AdminPage() {
                                                                     <button
                                                                         onClick={async () => {
                                                                             await supabase.from('profiles').update({ is_approved: true }).eq('id', profile.id);
+                                                                            // 활동 로그 기록
+                                                                            await supabase.from('activity_logs').insert([{
+                                                                                user_id: currentUserId,
+                                                                                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                                                                                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                                                                                action: 'APPROVE_USER',
+                                                                                target_type: 'profile',
+                                                                                target_id: profile.id,
+                                                                                details: { name: profile.display_name || profile.username }
+                                                                            }]);
                                                                             showToast('승인되었습니다.', 'success');
                                                                             fetchAdminData();
                                                                         }}
@@ -402,6 +538,16 @@ export default function AdminPage() {
                                                                         <button
                                                                             onClick={async () => {
                                                                                 if (confirm('삭제하시겠습니까? 계정과 프로필이 모두 삭제됩니다.')) {
+                                                                                    // 삭제 전에 로그 기록 (삭제 후에는 대상 정보가 없음)
+                                                                                    await supabase.from('activity_logs').insert([{
+                                                                                        user_id: currentUserId,
+                                                                                        user_email: profiles.find(p => p.id === currentUserId)?.email,
+                                                                                        user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                                                                                        action: 'DELETE_USER',
+                                                                                        target_type: 'profile',
+                                                                                        target_id: profile.id,
+                                                                                        details: { name: profile.display_name || profile.username, email: profile.email }
+                                                                                    }]);
                                                                                     const result = await deleteUser(profile.id);
                                                                                     if (result.success) {
                                                                                         showToast('사용자가 완전히 삭제되었습니다.', 'info');
@@ -476,8 +622,26 @@ export default function AdminPage() {
             ) : (
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="p-6 border-b border-slate-100 bg-slate-50/30">
-                        <h2 className="font-bold text-slate-900">사용자 활동 로그</h2>
-                        <p className="text-xs text-slate-500 mt-1">최근 100건의 주요 보안 및 데이터 변경 사항을 기록합니다.</p>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div>
+                                <h2 className="font-bold text-slate-900">사용자 활동 로그</h2>
+                                <p className="text-xs text-slate-500 mt-1">최근 100건의 주요 보안 및 데이터 변경 사항을 기록합니다.</p>
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                                {Object.entries(LOG_CATEGORIES).map(([key, label]) => (
+                                    <button
+                                        key={key}
+                                        onClick={() => setLogFilter(key)}
+                                        className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${logFilter === key
+                                            ? 'bg-blue-600 text-white shadow-sm'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                            }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                     {isLogsLoading ? (
                         <div className="py-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
@@ -494,57 +658,63 @@ export default function AdminPage() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {logs.map(log => {
-                                        const actionLabel = ACTION_LABELS[log.action as keyof typeof ACTION_LABELS] || log.action;
-                                        const targetLabel = TARGET_LABELS[log.target_type as keyof typeof TARGET_LABELS] || log.target_type;
+                                    {logs
+                                        .filter(log => {
+                                            if (logFilter === 'all') return true;
+                                            if (logFilter === 'system') return ['group', 'service_type'].includes(log.target_type);
+                                            return log.target_type === logFilter;
+                                        })
+                                        .map(log => {
+                                            const actionLabel = ACTION_LABELS[log.action as keyof typeof ACTION_LABELS] || log.action;
+                                            const targetLabel = TARGET_LABELS[log.target_type as keyof typeof TARGET_LABELS] || log.target_type;
 
-                                        return (
-                                            <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
-                                                <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
-                                                    {new Date(log.created_at).toLocaleString('ko-KR', {
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        hour: '2-digit',
-                                                        minute: '2-digit'
-                                                    })}
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-slate-900 font-bold">{log.user_display_name || '이름 없음'}</span>
-                                                        <span className="text-[10px] text-slate-500 font-normal">@{log.user_email?.split('@')[0]}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight
+                                            return (
+                                                <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
+                                                    <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
+                                                        {new Date(log.created_at).toLocaleString('ko-KR', {
+                                                            month: 'short',
+                                                            day: 'numeric',
+                                                            hour: '2-digit',
+                                                            minute: '2-digit'
+                                                        })}
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-slate-900 font-bold">{log.user_display_name || '이름 없음'}</span>
+                                                            <span className="text-[10px] text-slate-500 font-normal">@{log.user_email?.split('@')[0]}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight
                                                         ${log.action.includes('CREATE') ? 'bg-emerald-50 text-emerald-600' :
-                                                            log.action.includes('DELETE') ? 'bg-red-50 text-red-600' :
-                                                                'bg-blue-50 text-blue-600'}`}>
-                                                        {actionLabel}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className="text-slate-500 font-bold text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
-                                                        {targetLabel}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
-                                                    <div className="text-[11px] leading-relaxed">
-                                                        {log.details && typeof log.details === 'object' ? (
-                                                            Object.entries(log.details)
-                                                                .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
-                                                                .map(([key, value]) => {
-                                                                    const k = DETAIL_KEY_LABELS[key as keyof typeof DETAIL_KEY_LABELS] || key;
-                                                                    let v = value as string;
-                                                                    if (key.includes('status')) v = STATUS_LABELS[v as keyof typeof STATUS_LABELS] || v;
-                                                                    return `${k}: ${v}`;
-                                                                })
-                                                                .join(' | ')
-                                                        ) : JSON.stringify(log.details)}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
+                                                                log.action.includes('DELETE') ? 'bg-red-50 text-red-600' :
+                                                                    'bg-blue-50 text-blue-600'}`}>
+                                                            {actionLabel}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 whitespace-nowrap">
+                                                        <span className="text-slate-500 font-bold text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
+                                                            {targetLabel}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
+                                                        <div className="text-[11px] leading-relaxed">
+                                                            {log.details && typeof log.details === 'object' ? (
+                                                                Object.entries(log.details)
+                                                                    .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
+                                                                    .map(([key, value]) => {
+                                                                        const k = DETAIL_KEY_LABELS[key as keyof typeof DETAIL_KEY_LABELS] || key;
+                                                                        let v = value as string;
+                                                                        if (key.includes('status')) v = STATUS_LABELS[v as keyof typeof STATUS_LABELS] || v;
+                                                                        return `${k}: ${v}`;
+                                                                    })
+                                                                    .join(' | ')
+                                                            ) : JSON.stringify(log.details)}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                 </tbody>
                             </table>
                         </div>
@@ -581,6 +751,19 @@ export default function AdminPage() {
                             <button className="flex-1 btn-outline" onClick={() => setIsPermissionModalOpen(false)}>취소</button>
                             <button className="flex-1 btn-primary" onClick={async () => {
                                 await supabase.from('profiles').update({ allowed_groups: isAllSelected ? [] : selectedGroups }).eq('id', selectedProfile.id);
+                                // 활동 로그 기록
+                                await supabase.from('activity_logs').insert([{
+                                    user_id: currentUserId,
+                                    user_email: profiles.find(p => p.id === currentUserId)?.email,
+                                    user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                                    action: 'UPDATE_PERMISSION',
+                                    target_type: 'profile',
+                                    target_id: selectedProfile.id,
+                                    details: {
+                                        name: selectedProfile.display_name || selectedProfile.username,
+                                        permission: isAllSelected ? '전체' : `${selectedGroups.length}개 그룹`
+                                    }
+                                }]);
                                 showToast('권한이 저장되었습니다.', 'success');
                                 setIsPermissionModalOpen(false);
                                 fetchAdminData();

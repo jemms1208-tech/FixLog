@@ -73,6 +73,21 @@ export default function DashboardLayout({
     const filteredMenuItems = MENU_ITEMS.filter(item => item.roles.includes(userRole));
 
     const handleLogout = async () => {
+        // 로그아웃 활동 로그 기록
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: profile } = await supabase.from('profiles').select('email, display_name, username').eq('id', user.id).single();
+            await supabase.from('activity_logs').insert([{
+                user_id: user.id,
+                user_email: profile?.email,
+                user_display_name: profile?.display_name,
+                action: 'LOGOUT',
+                target_type: 'auth',
+                target_id: user.id,
+                details: { username: profile?.username }
+            }]);
+        }
+
         await supabase.auth.signOut();
         showToast('로그아웃 되었습니다.', 'info');
         router.push('/login');

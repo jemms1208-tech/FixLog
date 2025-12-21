@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
@@ -16,8 +16,9 @@ const STATUS_MAP = {
 
 export default function RecordsPage() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [records, setRecords] = useState<any[]>([]);
-    const [clients, setClients] = useState<any[]>([]);
+    const [clientList, setClientList] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newRecord, setNewRecord] = useState({
@@ -32,15 +33,32 @@ export default function RecordsPage() {
     const [serviceTypes, setServiceTypes] = useState<any[]>([]);
     const [userRole, setUserRole] = useState<string>('field');
 
+    // 페이지네이션 상태
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_SIZE = 20;
+
     const supabase = createClient();
     const { showToast } = useToast();
 
+    // 검색어 디바운싱 (300ms)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setCurrentPage(1); // 검색어 변경 시 첫 페이지로
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     useEffect(() => {
         fetchUserRole();
-        fetchRecords();
         fetchClients();
         fetchServiceTypes();
     }, []);
+
+    useEffect(() => {
+        fetchRecords();
+    }, [debouncedSearch, currentPage]);
 
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
@@ -57,19 +75,35 @@ export default function RecordsPage() {
 
     async function fetchClients() {
         const { data } = await supabase.from('clients').select('id, name');
-        if (data) setClients(data);
+        if (data) setClientList(data);
     }
 
     async function fetchRecords() {
         try {
             setLoading(true);
-            const { data, error } = await supabase
+
+            // 기본 쿼리 빌더
+            let query = supabase
                 .from('service_records')
-                .select(`*, clients (name)`)
-                .order('reception_at', { ascending: false });
+                .select(`*, clients (name)`, { count: 'exact' });
+
+            // 검색어가 있으면 필터 적용 (details, type, result 필드에서 검색)
+            if (debouncedSearch.trim()) {
+                const search = debouncedSearch.toLowerCase();
+                query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
+            }
+
+            // 페이지네이션 및 정렬 적용
+            const from = (currentPage - 1) * PAGE_SIZE;
+            const to = from + PAGE_SIZE - 1;
+
+            const { data, error, count } = await query
+                .order('reception_at', { ascending: false })
+                .range(from, to);
 
             if (error) throw error;
             setRecords(data || []);
+            setTotalCount(count || 0);
         } catch (error) {
             console.error('Error fetching records:', error);
         } finally {
@@ -77,10 +111,9 @@ export default function RecordsPage() {
         }
     }
 
-    const filteredRecords = records.filter(r =>
-        (r.clients?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (r.details || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+    // 서버 페이지네이션: 검색은 fetchRecords의 Supabase 쿼리에서 처리
 
     async function handleAddRecord(e: React.FormEvent) {
         e.preventDefault();
@@ -120,6 +153,22 @@ export default function RecordsPage() {
                 })
                 .eq('id', editingRecord.id);
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
+                await supabase.from('activity_logs').insert([{
+                    user_id: user.id,
+                    user_email: profile?.email,
+                    user_display_name: profile?.display_name,
+                    action: 'UPDATE_RECORD',
+                    target_type: 'record',
+                    target_id: editingRecord.id,
+                    details: { type: editingRecord.type, client: editingRecord.clients?.name || clientList.find((c: any) => c.id === editingRecord.client_id)?.name }
+                }]);
+            }
+
             setEditingRecord(null);
             showToast('내역이 수정되었습니다.', 'success');
             fetchRecords();
@@ -131,8 +180,27 @@ export default function RecordsPage() {
     async function handleDeleteRecord(id: string) {
         if (!confirm('이 접수 내역을 정말 삭제하시겠습니까?')) return;
         try {
+            // 삭제 전에 내역 정보 가져오기
+            const recordToDelete = records.find(r => r.id === id);
+
             const { error } = await supabase.from('service_records').delete().eq('id', id);
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
+                await supabase.from('activity_logs').insert([{
+                    user_id: user.id,
+                    user_email: profile?.email,
+                    user_display_name: profile?.display_name,
+                    action: 'DELETE_RECORD',
+                    target_type: 'record',
+                    target_id: id,
+                    details: { type: recordToDelete?.type, client: recordToDelete?.clients?.name }
+                }]);
+            }
+
             showToast('접수 내역이 삭제되었습니다.', 'info');
             fetchRecords();
             setViewingRecord(null);
@@ -259,7 +327,7 @@ export default function RecordsPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                     type="text"
-                    placeholder="거래처명 또는 내용 검색..."
+                    placeholder="검색어 입력 또는 거래처:제이이, 유형:장애, 상태:대기"
                     className="input-field"
                     style={{ paddingLeft: '2.5rem' }}
                     value={searchTerm}
@@ -287,7 +355,7 @@ export default function RecordsPage() {
 
                     {/* 목록 */}
                     <div className="divide-y divide-slate-100">
-                        {filteredRecords.map((record) => {
+                        {records.map((record: any) => {
                             const statusKey = record.status || (record.processed_at ? 'completed' : 'pending');
                             const status = STATUS_MAP[statusKey as keyof typeof STATUS_MAP];
 
@@ -380,13 +448,49 @@ export default function RecordsPage() {
                                 </div>
                             );
                         })}
-                        {filteredRecords.length === 0 && (
-                            <div className="text-center py-20 bg-slate-50/50">
-                                <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                                <p className="text-slate-800 font-medium">검색 결과가 없습니다.</p>
-                            </div>
-                        )}
                     </div>
+
+                    {/* 페이지네이션 */}
+                    {totalPages > 1 && (
+                        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                            <div className="text-sm text-slate-500">
+                                총 <span className="font-bold text-slate-700">{totalCount.toLocaleString()}</span>건 중 {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)}건
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    처음
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    이전
+                                </button>
+                                <span className="px-4 py-1.5 text-sm font-bold text-blue-600 bg-blue-50 rounded-lg">
+                                    {currentPage} / {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    다음
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    끝
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -401,7 +505,7 @@ export default function RecordsPage() {
                             onChange={e => setNewRecord({ ...newRecord, client_id: e.target.value })}
                         >
                             <option value="">거래처를 선택하세요</option>
-                            {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                            {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                     </div>
 
@@ -455,7 +559,7 @@ export default function RecordsPage() {
                                 onChange={e => setEditingRecord({ ...editingRecord, client_id: e.target.value })}
                             >
                                 <option value="">선택 안함</option>
-                                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                {clientList.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
                             </select>
                         </div>
                         <div>

@@ -79,8 +79,8 @@ export default async function proxy(request: NextRequest) {
         }
     }
 
-    // 로그인한 사용자가 로그인 페이지 접근 시 대시보드로 리다이렉트
-    if (request.nextUrl.pathname === '/login' && user) {
+    // 로그인한 사용자가 로그인/회원가입 페이지 접근 시 대시보드로 리다이렉트
+    if (user && (request.nextUrl.pathname === '/login' || request.nextUrl.pathname === '/signup')) {
         return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 

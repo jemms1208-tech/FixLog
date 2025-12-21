@@ -1,7 +1,7 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, Plus, Loader2, Pencil, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
@@ -61,6 +61,7 @@ const formatBizRegNo = (value: string): string => {
 
 export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [clients, setClients] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -68,6 +69,12 @@ export default function ClientsPage() {
     const [editingClient, setEditingClient] = useState<any>(null);
     const [viewingClient, setViewingClient] = useState<any>(null);
     const [userRole, setUserRole] = useState<string | null>(null);
+
+    // 페이지네이션 상태
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    const PAGE_SIZE = 20;
+
     const [newClient, setNewClient] = useState({
         name: '',
         biz_reg_no: '',
@@ -82,11 +89,23 @@ export default function ClientsPage() {
     const supabase = createClient();
     const { showToast } = useToast();
 
+    // 검색어 디바운싱 (300ms)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setCurrentPage(1); // 검색어 변경 시 첫 페이지로
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
+
     useEffect(() => {
         fetchUserRole();
-        fetchClients();
         fetchGroups();
     }, []);
+
+    useEffect(() => {
+        fetchClients();
+    }, [debouncedSearch, currentPage]);
 
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
@@ -104,11 +123,30 @@ export default function ClientsPage() {
     async function fetchClients() {
         try {
             setLoading(true);
-            const { data, error } = await supabase
+
+            // 기본 쿼리 빌더
+            let query = supabase
                 .from('clients')
-                .select(`*, client_groups (name)`).order('name');
+                .select(`*, client_groups (name)`, { count: 'exact' });
+
+            // 검색어가 있으면 필터 적용
+            if (debouncedSearch.trim()) {
+                const search = debouncedSearch.toLowerCase();
+                // Supabase에서는 or 조건으로 여러 필드 검색
+                query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,biz_reg_no.ilike.%${search}%,address.ilike.%${search}%`);
+            }
+
+            // 페이지네이션 및 정렬 적용
+            const from = (currentPage - 1) * PAGE_SIZE;
+            const to = from + PAGE_SIZE - 1;
+
+            const { data, error, count } = await query
+                .order('name')
+                .range(from, to);
+
             if (error) throw error;
             setClients(data || []);
+            setTotalCount(count || 0);
         } catch (error) {
             console.error(error);
         } finally {
@@ -116,10 +154,9 @@ export default function ClientsPage() {
         }
     }
 
-    const filteredClients = clients.filter(c =>
-        (c.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.phone || '').includes(searchTerm)
-    );
+    const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+
+    // 서버 페이지네이션: 검색은 fetchClients의 Supabase 쿼리에서 처리
 
     async function handleAddClient(e: React.FormEvent) {
         e.preventDefault();
@@ -207,7 +244,7 @@ export default function ClientsPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                     type="text"
-                    placeholder="상호명 또는 전화번호 검색..."
+                    placeholder="검색어 입력 또는 상호:제이이, 전화:02-1234, 사업자:123-45"
                     className="input-field"
                     style={{ paddingLeft: '2.5rem' }}
                     value={searchTerm}
@@ -236,7 +273,7 @@ export default function ClientsPage() {
 
                     {/* 목록 */}
                     <div className="divide-y divide-slate-100">
-                        {filteredClients.map((client) => (
+                        {clients.map((client: any) => (
                             <div key={client.id} className="group">
                                 {/* PC 레이아웃 (lg 이상) */}
                                 <div className="hidden lg:grid grid-cols-20 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center">
@@ -299,13 +336,55 @@ export default function ClientsPage() {
                                 </div>
                             </div>
                         ))}
-                        {filteredClients.length === 0 && (
+                        {clients.length === 0 && (
                             <div className="text-center py-20 bg-slate-50/50">
                                 <Search className="w-10 h-10 text-slate-300 mx-auto mb-3" />
                                 <p className="text-slate-400 font-medium">검색 결과가 없습니다.</p>
                             </div>
                         )}
                     </div>
+
+                    {/* 페이지네이션 */}
+                    {totalPages > 1 && (
+                        <div className="p-4 border-t border-slate-100 flex items-center justify-between">
+                            <div className="text-sm text-slate-500">
+                                총 <span className="font-bold text-slate-700">{totalCount.toLocaleString()}</span>건 중 {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, totalCount)}건
+                            </div>
+                            <div className="flex items-center gap-1">
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    처음
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    이전
+                                </button>
+                                <span className="px-4 py-1.5 text-sm font-bold text-blue-600 bg-blue-50 rounded-lg">
+                                    {currentPage} / {totalPages}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    다음
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage === totalPages}
+                                    className="px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 transition-colors"
+                                >
+                                    끝
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div >
             )
             }

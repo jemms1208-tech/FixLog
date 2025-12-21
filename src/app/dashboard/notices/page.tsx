@@ -87,14 +87,29 @@ export default function NoticesPage() {
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('notices')
                 .insert([{
                     ...formData,
                     author_id: currentUserId
-                }]);
+                }])
+                .select()
+                .single();
 
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', currentUserId).single();
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profile?.email,
+                user_display_name: profile?.display_name,
+                action: 'CREATE_NOTICE',
+                target_type: 'notice',
+                target_id: data?.id,
+                details: { title: formData.title }
+            }]);
+
             setIsCreateModalOpen(false);
             setFormData({ title: '', content: '', allowed_roles: ALL_ROLES });
             showToast('공지사항이 등록되었습니다.', 'success');
@@ -118,6 +133,19 @@ export default function NoticesPage() {
                 .eq('id', editingNotice.id);
 
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', currentUserId).single();
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profile?.email,
+                user_display_name: profile?.display_name,
+                action: 'UPDATE_NOTICE',
+                target_type: 'notice',
+                target_id: editingNotice.id,
+                details: { title: editingNotice.title }
+            }]);
+
             setEditingNotice(null);
             showToast('공지사항이 수정되었습니다.', 'success');
             fetchNotices();
@@ -129,8 +157,24 @@ export default function NoticesPage() {
     async function handleDelete(id: string) {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         try {
+            // 삭제 전에 공지 정보 가져오기
+            const noticeToDelete = notices.find(n => n.id === id);
+
             const { error } = await supabase.from('notices').delete().eq('id', id);
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', currentUserId).single();
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profile?.email,
+                user_display_name: profile?.display_name,
+                action: 'DELETE_NOTICE',
+                target_type: 'notice',
+                target_id: id,
+                details: { title: noticeToDelete?.title }
+            }]);
+
             showToast('공지사항이 삭제되었습니다.', 'info');
             fetchNotices();
         } catch (error: any) {
@@ -216,15 +260,15 @@ export default function NoticesPage() {
                                                 <div className="flex items-center gap-1 opacity-100">
                                                     <button
                                                         onClick={() => setEditingNotice(notice)}
-                                                        className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded transition-colors"
+                                                        className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
                                                     >
-                                                        <Pencil className="w-3.5 h-3.5" />
+                                                        수정
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(notice.id)}
-                                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                                        className="text-[12px] font-medium text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all"
                                                     >
-                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                        삭제
                                                     </button>
                                                 </div>
                                             )}
