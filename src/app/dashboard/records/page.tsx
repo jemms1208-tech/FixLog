@@ -38,6 +38,9 @@ export default function RecordsPage() {
     const [totalCount, setTotalCount] = useState(0);
     const PAGE_SIZE = 20;
 
+    // 사용자 접근 가능 그룹
+    const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
+
     const supabase = createClient();
     const { showToast } = useToast();
 
@@ -58,13 +61,17 @@ export default function RecordsPage() {
 
     useEffect(() => {
         fetchRecords();
-    }, [debouncedSearch, currentPage]);
+    }, [debouncedSearch, currentPage, allowedGroups]);
+
 
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-            const { data } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-            if (data) setUserRole(data.role || 'field');
+            const { data } = await supabase.from('profiles').select('role, allowed_groups').eq('id', user.id).single();
+            if (data) {
+                setUserRole(data.role || 'field');
+                setAllowedGroups(data.allowed_groups || []);
+            }
         }
     }
 
@@ -74,22 +81,93 @@ export default function RecordsPage() {
     }
 
     async function fetchClients() {
-        const { data } = await supabase.from('clients').select('id, name');
-        if (data) setClientList(data);
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            const { data: profile } = await supabase.from('profiles').select('allowed_groups').eq('id', user.id).single();
+
+            let query = supabase.from('clients').select('id, name, group_id');
+
+            // 접근 그룹 필터링
+            if (profile?.allowed_groups && profile.allowed_groups.length > 0) {
+                query = query.in('group_id', profile.allowed_groups);
+            }
+
+            const { data } = await query;
+            if (data) setClientList(data);
+        }
     }
+
+    // 키:값 검색 파싱 함수
+    const parseSearchQuery = (query: string) => {
+        const filters: { [key: string]: string } = {};
+        let generalSearch = '';
+
+        const keyValuePattern = /(거래처|유형|상태|내용|결과):([^\s,]+)/g;
+        let match;
+        const usedRanges: [number, number][] = [];
+
+        while ((match = keyValuePattern.exec(query)) !== null) {
+            filters[match[1]] = match[2];
+            usedRanges.push([match.index, match.index + match[0].length]);
+        }
+
+        let remaining = query;
+        usedRanges.sort((a, b) => b[0] - a[0]).forEach(([start, end]) => {
+            remaining = remaining.slice(0, start) + remaining.slice(end);
+        });
+        generalSearch = remaining.replace(/,/g, ' ').trim();
+
+        return { filters, generalSearch };
+    };
 
     async function fetchRecords() {
         try {
             setLoading(true);
 
+            // 접근 그룹 필터링을 위해 먼저 허용된 거래처 ID 목록 조회
+            let allowedClientIds: string[] | null = null;
+            if (allowedGroups.length > 0) {
+                const { data: allowedClients } = await supabase
+                    .from('clients')
+                    .select('id')
+                    .in('group_id', allowedGroups);
+                allowedClientIds = allowedClients?.map(c => c.id) || [];
+            }
+
             // 기본 쿼리 빌더
             let query = supabase
                 .from('service_records')
-                .select(`*, clients (name)`, { count: 'exact' });
+                .select(`*, clients (name, group_id)`, { count: 'exact' });
 
-            // 검색어가 있으면 필터 적용 (details, type, result 필드에서 검색)
-            if (debouncedSearch.trim()) {
-                const search = debouncedSearch.toLowerCase();
+            // 접근 그룹 필터링 (해당 그룹의 거래처 내역만 조회)
+            if (allowedClientIds !== null) {
+                if (allowedClientIds.length === 0) {
+                    // 접근 가능한 거래처가 없으면 빈 결과 반환
+                    setRecords([]);
+                    setTotalCount(0);
+                    setLoading(false);
+                    return;
+                }
+                query = query.in('client_id', allowedClientIds);
+            }
+
+            // 키:값 검색 파싱
+            const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
+
+            // 키:값 필터 적용
+            if (filters['유형']) query = query.ilike('type', `%${filters['유형']}%`);
+            if (filters['내용']) query = query.ilike('details', `%${filters['내용']}%`);
+            if (filters['결과']) query = query.ilike('result', `%${filters['결과']}%`);
+            if (filters['상태']) {
+                // 상태 한글 → 영문 매핑
+                const statusMap: { [key: string]: string } = { '대기': 'pending', '처리중': 'processing', '완료': 'completed' };
+                const statusValue = statusMap[filters['상태']] || filters['상태'];
+                query = query.eq('status', statusValue);
+            }
+
+            // 일반 검색어가 있으면 전체 필드에서 검색
+            if (generalSearch.trim()) {
+                const search = generalSearch;
                 query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
             }
 

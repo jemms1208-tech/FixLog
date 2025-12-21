@@ -107,11 +107,18 @@ export default function ClientsPage() {
         fetchClients();
     }, [debouncedSearch, currentPage]);
 
+    // 사용자 역할 및 접근 가능 그룹 조회
+    const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
+
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-            const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
-            if (profile) setUserRole(profile.role);
+            const { data: profile } = await supabase.from('profiles').select('role, allowed_groups').eq('id', user.id).single();
+            if (profile) {
+                setUserRole(profile.role);
+                // allowed_groups가 비어있거나 없으면 전체 접근 가능
+                setAllowedGroups(profile.allowed_groups || []);
+            }
         }
     }
 
@@ -119,6 +126,29 @@ export default function ClientsPage() {
         const { data } = await supabase.from('client_groups').select('*');
         if (data) setGroups(data);
     }
+
+    // 키:값 검색 파싱 함수
+    const parseSearchQuery = (query: string) => {
+        const filters: { [key: string]: string } = {};
+        let generalSearch = '';
+
+        const keyValuePattern = /(상호|사업자|전화|담당자|주소|밴사|장비|그룹):([^\s,]+)/g;
+        let match;
+        const usedRanges: [number, number][] = [];
+
+        while ((match = keyValuePattern.exec(query)) !== null) {
+            filters[match[1]] = match[2];
+            usedRanges.push([match.index, match.index + match[0].length]);
+        }
+
+        let remaining = query;
+        usedRanges.sort((a, b) => b[0] - a[0]).forEach(([start, end]) => {
+            remaining = remaining.slice(0, start) + remaining.slice(end);
+        });
+        generalSearch = remaining.replace(/,/g, ' ').trim();
+
+        return { filters, generalSearch };
+    };
 
     async function fetchClients() {
         try {
@@ -129,10 +159,26 @@ export default function ClientsPage() {
                 .from('clients')
                 .select(`*, client_groups (name)`, { count: 'exact' });
 
-            // 검색어가 있으면 필터 적용
-            if (debouncedSearch.trim()) {
-                const search = debouncedSearch.toLowerCase();
-                // Supabase에서는 or 조건으로 여러 필드 검색
+            // 접근 그룹 필터링 (allowed_groups가 비어있으면 전체 접근)
+            if (allowedGroups.length > 0) {
+                query = query.in('group_id', allowedGroups);
+            }
+
+            // 키:값 검색 파싱
+            const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
+
+            // 키:값 필터 적용
+            if (filters['상호']) query = query.ilike('name', `%${filters['상호']}%`);
+            if (filters['사업자']) query = query.ilike('biz_reg_no', `%${filters['사업자']}%`);
+            if (filters['전화']) query = query.ilike('phone', `%${filters['전화']}%`);
+            if (filters['담당자']) query = query.ilike('contact_phone', `%${filters['담당자']}%`);
+            if (filters['주소']) query = query.ilike('address', `%${filters['주소']}%`);
+            if (filters['밴사']) query = query.ilike('van_company', `%${filters['밴사']}%`);
+            if (filters['장비']) query = query.ilike('equipment', `%${filters['장비']}%`);
+
+            // 일반 검색어가 있으면 전체 필드에서 검색
+            if (generalSearch.trim()) {
+                const search = generalSearch;
                 query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,biz_reg_no.ilike.%${search}%,address.ilike.%${search}%`);
             }
 
