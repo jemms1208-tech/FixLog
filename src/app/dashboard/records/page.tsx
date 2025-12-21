@@ -509,7 +509,7 @@ export default function RecordsPage() {
                 ? (r.clients.client_groups?.name ? `(${r.clients.client_groups.name}) ${r.clients.name}` : r.clients.name)
                 : '미지정',
             '유형': r.type,
-            '내용': r.details,
+            '내용': r.details || '-',
             '처리상태': STATUS_MAP[r.status as keyof typeof STATUS_MAP]?.label || (r.processed_at ? '완료' : '대기'),
             '처리일시': r.processed_at
                 ? new Date(r.processed_at).toLocaleString()
@@ -518,6 +518,24 @@ export default function RecordsPage() {
         }));
 
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+
+        const getLength = (str: string) => {
+            let len = 0;
+            for (let i = 0; i < str.length; i++) {
+                len += str.charCodeAt(i) > 127 ? 2 : 1;
+            }
+            return len;
+        };
+
+        const colWidths = Object.keys(dataToExport[0] || {}).map(key => {
+            const maxLen = Math.max(
+                getLength(key),
+                ...dataToExport.map(row => getLength(String(row[key as keyof typeof row] || '')))
+            );
+            return { wch: maxLen + 4 }; // 여유 공간 4
+        });
+        worksheet['!cols'] = colWidths;
+
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, '장애접수기록');
         XLSX.writeFile(workbook, `서비스기록_${new Date().toISOString().split('T')[0]}.xlsx`);

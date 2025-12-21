@@ -286,9 +286,34 @@ export default function ClientsPage() {
 
     async function handleExportExcel() {
         const data = clients.map(c => ({
-            '상호': c.name, '번호': c.phone, '주소': c.address, '그룹': c.client_groups?.name
+            '상호명': c.name,
+            '사업자번호': c.biz_reg_no || '-',
+            '전화번호': c.phone || '-',
+            '담당자연락처': c.contact_phone || '-',
+            '주소': c.address || '-',
+            '그룹': c.client_groups?.name || '미구분',
+            '장비': c.equipment || '-',
+            '밴사': c.van_company || '-'
         }));
         const ws = XLSX.utils.json_to_sheet(data);
+
+        const getLength = (str: string) => {
+            let len = 0;
+            for (let i = 0; i < str.length; i++) {
+                len += str.charCodeAt(i) > 127 ? 2 : 1;
+            }
+            return len;
+        };
+
+        const colWidths = Object.keys(data[0] || {}).map(key => {
+            const maxLen = Math.max(
+                getLength(key),
+                ...data.map(row => getLength(String(row[key as keyof typeof row] || '')))
+            );
+            return { wch: maxLen + 4 };
+        });
+        ws['!cols'] = colWidths;
+
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Clients');
         XLSX.writeFile(wb, 'clients.xlsx');
