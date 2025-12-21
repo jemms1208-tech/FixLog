@@ -137,7 +137,7 @@ export default function ClientsPage() {
         const filters: { [key: string]: string } = {};
         let generalSearch = '';
 
-        const keyValuePattern = /(상호|사업자|전화|담당자|주소|밴사|장비|그룹):([^\s,]+)/g;
+        const keyValuePattern = /(상호|상호명|사업자|전화|담당자|주소|밴사|장비|그룹):([^\s,]+)/g;
         let match;
         const usedRanges: [number, number][] = [];
 
@@ -162,7 +162,7 @@ export default function ClientsPage() {
             // 기본 쿼리 빌더
             let query = supabase
                 .from('clients')
-                .select(`*, client_groups (name)`, { count: 'exact' });
+                .select(`*, client_groups!inner(name)`, { count: 'exact' });
 
             // 접근 그룹 필터링 (allowed_groups가 비어있으면 전체 접근)
             if (allowedGroups.length > 0) {
@@ -174,13 +174,14 @@ export default function ClientsPage() {
 
 
             // 키:값 필터 적용
-            if (filters['상호']) query = query.ilike('name', `%${filters['상호']}%`);
+            if (filters['상호'] || filters['상호명']) query = query.ilike('name', `%${filters['상호'] || filters['상호명']}%`);
             if (filters['사업자']) query = query.ilike('biz_reg_no', `%${filters['사업자']}%`);
             if (filters['전화']) query = query.ilike('phone', `%${filters['전화']}%`);
             if (filters['담당자']) query = query.ilike('contact_phone', `%${filters['담당자']}%`);
             if (filters['주소']) query = query.ilike('address', `%${filters['주소']}%`);
             if (filters['밴사']) query = query.ilike('van_company', `%${filters['밴사']}%`);
             if (filters['장비']) query = query.ilike('equipment', `%${filters['장비']}%`);
+            if (filters['그룹']) query = query.ilike('client_groups.name', `%${filters['그룹']}%`);
 
             // 일반 검색어가 있으면 전체 필드에서 검색
             if (generalSearch.trim()) {
@@ -346,22 +347,12 @@ export default function ClientsPage() {
                                         {client.van_company || '-'}
                                     </div>
                                     <div className="col-span-2 flex justify-end">
-                                        {(userRole === 'admin' || userRole === 'operator') && (
-                                            <div className="flex gap-1 justify-end">
-                                                <button
-                                                    onClick={() => setEditingClient({ ...client, group_id: client.group_id || '' })}
-                                                    className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
-                                                >
-                                                    수정
-                                                </button>
-                                                <button
-                                                    onClick={() => handleDeleteClient(client.id)}
-                                                    className="text-[12px] font-medium text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all"
-                                                >
-                                                    삭제
-                                                </button>
-                                            </div>
-                                        )}
+                                        <button
+                                            onClick={() => setViewingClient(client)}
+                                            className="text-[12px] font-medium text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
+                                        >
+                                            상세보기
+                                        </button>
                                     </div>
                                 </div>
 

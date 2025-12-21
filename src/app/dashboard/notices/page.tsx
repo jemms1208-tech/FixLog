@@ -177,6 +177,7 @@ export default function NoticesPage() {
 
             showToast('공지사항이 삭제되었습니다.', 'info');
             fetchNotices();
+            setViewNotice(null);
         } catch (error: any) {
             showToast(`공지 삭제 오류: ${error.message}`, 'error');
         }
@@ -227,7 +228,7 @@ export default function NoticesPage() {
                                     <div className="flex items-start justify-between gap-4">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                                {notice.allowed_roles?.length < ALL_ROLES.length && (
+                                                {(userRole === 'operator' || userRole === 'admin') && notice.allowed_roles?.length < ALL_ROLES.length && (
                                                     <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1">
                                                         <Shield className="w-2.5 h-2.5" />
                                                         권한제한
@@ -450,7 +451,7 @@ export default function NoticesPage() {
                     <div className="space-y-6">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
-                                {viewNotice.allowed_roles?.length < ALL_ROLES.length && (
+                                {(userRole === 'operator' || userRole === 'admin') && viewNotice.allowed_roles?.length < ALL_ROLES.length && (
                                     <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-1.5 py-0.5 rounded border border-blue-100 flex items-center gap-1">
                                         <Shield className="w-2.5 h-2.5" />
                                         권한제한
@@ -470,8 +471,27 @@ export default function NoticesPage() {
                             {viewNotice.content}
                         </div>
 
-                        <div className="pt-4 border-t border-slate-50 flex justify-end">
-                            <button onClick={() => setViewNotice(null)} className="btn-primary px-8">닫기</button>
+                        <div className="pt-4 border-t border-slate-50 flex gap-2">
+                            {(userRole === 'admin' || userRole === 'operator') && (
+                                <>
+                                    <button
+                                        onClick={() => {
+                                            setEditingNotice({ ...viewNotice, allowed_roles: viewNotice.allowed_roles || ALL_ROLES });
+                                            setViewNotice(null);
+                                        }}
+                                        className="flex-1 btn-outline h-12"
+                                    >
+                                        수정
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(viewNotice.id)}
+                                        className="flex-1 btn-outline border-red-200 text-red-600 h-12 hover:bg-red-50"
+                                    >
+                                        삭제
+                                    </button>
+                                </>
+                            )}
+                            <button onClick={() => setViewNotice(null)} className="flex-1 btn-primary h-12">닫기</button>
                         </div>
                     </div>
                 )}

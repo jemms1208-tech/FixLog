@@ -110,6 +110,7 @@ export default function AdminPage() {
     const [activeTab, setActiveTab] = useState<'users' | 'logs'>('users');
     const [logs, setLogs] = useState<any[]>([]);
     const [logFilter, setLogFilter] = useState<string>('all');
+    const [logPage, setLogPage] = useState(1);
     const [isLogsLoading, setIsLogsLoading] = useState(false);
 
     // Modals
@@ -175,8 +176,7 @@ export default function AdminPage() {
             const { data, error } = await supabase
                 .from('activity_logs')
                 .select('*')
-                .order('created_at', { ascending: false })
-                .limit(100);
+                .order('created_at', { ascending: false });
             if (error) throw error;
             setLogs(data || []);
         } catch (error: any) {
@@ -631,7 +631,7 @@ export default function AdminPage() {
                                 {Object.entries(LOG_CATEGORIES).map(([key, label]) => (
                                     <button
                                         key={key}
-                                        onClick={() => setLogFilter(key)}
+                                        onClick={() => { setLogFilter(key); setLogPage(1); }}
                                         className={`px-3 py-1.5 text-[11px] font-bold rounded-lg transition-all ${logFilter === key
                                             ? 'bg-blue-600 text-white shadow-sm'
                                             : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -646,78 +646,106 @@ export default function AdminPage() {
                     {isLogsLoading ? (
                         <div className="py-20 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 whitespace-nowrap">
-                                        <th className="px-6 py-4 min-w-[140px]">시간</th>
-                                        <th className="px-6 py-4 min-w-[180px]">사용자</th>
-                                        <th className="px-6 py-4 min-w-[100px]">활동</th>
-                                        <th className="px-6 py-4 min-w-[100px]">대상</th>
-                                        <th className="px-6 py-4 min-w-[300px]">상세정보</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {logs
-                                        .filter(log => {
-                                            if (logFilter === 'all') return true;
-                                            if (logFilter === 'system') return ['group', 'service_type'].includes(log.target_type);
-                                            return log.target_type === logFilter;
-                                        })
-                                        .map(log => {
-                                            const actionLabel = ACTION_LABELS[log.action as keyof typeof ACTION_LABELS] || log.action;
-                                            const targetLabel = TARGET_LABELS[log.target_type as keyof typeof TARGET_LABELS] || log.target_type;
+                        (() => {
+                            const filteredLogs = logs.filter(log => {
+                                if (logFilter === 'all') return true;
+                                if (logFilter === 'system') return ['group', 'service_type'].includes(log.target_type);
+                                return log.target_type === logFilter;
+                            });
 
-                                            return (
-                                                <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
-                                                    <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
-                                                        {new Date(log.created_at).toLocaleString('ko-KR', {
-                                                            month: 'short',
-                                                            day: 'numeric',
-                                                            hour: '2-digit',
-                                                            minute: '2-digit'
-                                                        })}
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-slate-900 font-bold">{log.user_display_name || '이름 없음'}</span>
-                                                            <span className="text-[10px] text-slate-500 font-normal">@{log.user_email?.split('@')[0]}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight
-                                                        ${log.action.includes('CREATE') ? 'bg-emerald-50 text-emerald-600' :
-                                                                log.action.includes('DELETE') ? 'bg-red-50 text-red-600' :
-                                                                    'bg-blue-50 text-blue-600'}`}>
-                                                            {actionLabel}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <span className="text-slate-500 font-bold text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
-                                                            {targetLabel}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
-                                                        <div className="text-[11px] leading-relaxed">
-                                                            {log.details && typeof log.details === 'object' ? (
-                                                                Object.entries(log.details)
-                                                                    .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
-                                                                    .map(([key, value]) => {
-                                                                        const k = DETAIL_KEY_LABELS[key as keyof typeof DETAIL_KEY_LABELS] || key;
-                                                                        let v = value as string;
-                                                                        if (key.includes('status')) v = STATUS_LABELS[v as keyof typeof STATUS_LABELS] || v;
-                                                                        return `${k}: ${v}`;
-                                                                    })
-                                                                    .join(' | ')
-                                                            ) : JSON.stringify(log.details)}
-                                                        </div>
-                                                    </td>
+                            const LOG_PAGE_SIZE = 50;
+                            const totalPages = Math.ceil(filteredLogs.length / LOG_PAGE_SIZE);
+                            const paginatedLogs = filteredLogs.slice((logPage - 1) * LOG_PAGE_SIZE, logPage * LOG_PAGE_SIZE);
+
+                            return (
+                                <>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left border-collapse">
+                                            <thead>
+                                                <tr className="bg-slate-50/50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-100 whitespace-nowrap">
+                                                    <th className="px-6 py-4 min-w-[140px]">시간</th>
+                                                    <th className="px-6 py-4 min-w-[180px]">사용자</th>
+                                                    <th className="px-6 py-4 min-w-[100px]">활동</th>
+                                                    <th className="px-6 py-4 min-w-[100px]">대상</th>
+                                                    <th className="px-6 py-4 min-w-[300px]">상세정보</th>
                                                 </tr>
-                                            );
-                                        })}
-                                </tbody>
-                            </table>
-                        </div>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {paginatedLogs.map(log => {
+                                                    const actionLabel = ACTION_LABELS[log.action as keyof typeof ACTION_LABELS] || log.action;
+                                                    const targetLabel = TARGET_LABELS[log.target_type as keyof typeof TARGET_LABELS] || log.target_type;
+
+                                                    return (
+                                                        <tr key={log.id} className="hover:bg-slate-50/50 transition-colors text-[13px] font-medium">
+                                                            <td className="px-6 py-4 text-slate-400 whitespace-nowrap">
+                                                                {new Date(log.created_at).toLocaleString('ko-KR', {
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                    hour: '2-digit',
+                                                                    minute: '2-digit'
+                                                                })}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <div className="flex flex-col">
+                                                                    <span className="text-slate-900 font-bold">{log.user_display_name || '이름 없음'}</span>
+                                                                    <span className="text-[10px] text-slate-500 font-normal">@{log.user_email?.split('@')[0]}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold tracking-tight
+                                                                ${log.action.includes('CREATE') ? 'bg-emerald-50 text-emerald-600' :
+                                                                        log.action.includes('DELETE') ? 'bg-red-50 text-red-600' :
+                                                                            'bg-blue-50 text-blue-600'}`}>
+                                                                    {actionLabel}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className="text-slate-500 font-bold text-[11px] bg-slate-100 px-1.5 py-0.5 rounded">
+                                                                    {targetLabel}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-slate-600 font-medium whitespace-nowrap">
+                                                                <div className="text-[11px] leading-relaxed">
+                                                                    {log.details && typeof log.details === 'object' ? (
+                                                                        Object.entries(log.details)
+                                                                            .filter(([key]) => !['id', 'created_at', 'updated_at'].includes(key))
+                                                                            .map(([key, value]) => {
+                                                                                const k = DETAIL_KEY_LABELS[key as keyof typeof DETAIL_KEY_LABELS] || key;
+                                                                                let v = value as string;
+                                                                                if (key.includes('status')) v = STATUS_LABELS[v as keyof typeof STATUS_LABELS] || v;
+                                                                                return `${k}: ${v}`;
+                                                                            })
+                                                                            .join(' | ')
+                                                                    ) : JSON.stringify(log.details)}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {totalPages > 1 && (
+                                        <div className="flex justify-center gap-2 mt-4 pb-8">
+                                            <button
+                                                onClick={() => setLogPage(p => Math.max(1, p - 1))}
+                                                disabled={logPage === 1}
+                                                className="px-3 py-1 rounded border disabled:opacity-50 hover:bg-slate-50 text-xs font-medium"
+                                            >이전</button>
+                                            <span className="px-3 py-1 text-xs font-medium text-slate-600">
+                                                {logPage} / {totalPages}
+                                            </span>
+                                            <button
+                                                onClick={() => setLogPage(p => Math.min(totalPages, p + 1))}
+                                                disabled={logPage === totalPages}
+                                                className="px-3 py-1 rounded border disabled:opacity-50 hover:bg-slate-50 text-xs font-medium"
+                                            >다음</button>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()
                     )}
                 </div>
             )}

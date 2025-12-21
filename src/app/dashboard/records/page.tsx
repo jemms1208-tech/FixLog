@@ -107,7 +107,7 @@ export default function RecordsPage() {
         const filters: { [key: string]: string } = {};
         let generalSearch = '';
 
-        const keyValuePattern = /(거래처|유형|상태|내용|결과):([^\s,]+)/g;
+        const keyValuePattern = /(거래처|유형|상태|내용|결과|접수일|처리일):([^\s,]+)/g;
         let match;
         const usedRanges: [number, number][] = [];
 
@@ -194,6 +194,15 @@ export default function RecordsPage() {
             if (filters['유형']) query = query.ilike('type', `%${filters['유형']}%`);
             if (filters['내용']) query = query.ilike('details', `%${filters['내용']}%`);
             if (filters['결과']) query = query.ilike('result', `%${filters['결과']}%`);
+            if (filters['접수일']) {
+                // 날짜 형식: YYYY-MM-DD 또는 MM-DD 또는 MM/DD
+                const dateStr = filters['접수일'].replace(/\//g, '-');
+                query = query.ilike('reception_at::text', `%${dateStr}%`);
+            }
+            if (filters['처리일']) {
+                const dateStr = filters['처리일'].replace(/\//g, '-');
+                query = query.ilike('processed_at::text', `%${dateStr}%`);
+            }
             if (filters['상태']) {
                 // 상태 한글 → 영문 매핑
                 const statusMap: { [key: string]: string } = { '대기': 'pending', '처리중': 'processing', '완료': 'completed' };
@@ -460,11 +469,11 @@ export default function RecordsPage() {
                         <div className="col-span-2">접수일시</div>
                         <div className="col-span-2">거래처</div>
                         <div className="col-span-1">유형</div>
-                        <div className="col-span-2">내용</div>
-                        <div className="col-span-2">처리결과</div>
+                        <div className="col-span-3">내용</div>
+                        <div className="col-span-3">처리결과</div>
                         <div className="col-span-2">처리일시</div>
                         <div className="col-span-1 text-center">상태</div>
-                        <div className="col-span-4 text-right">관리</div>
+                        <div className="col-span-2 text-right">관리</div>
                     </div>
 
                     {/* 목록 */}
@@ -484,8 +493,8 @@ export default function RecordsPage() {
                                             {record.clients?.name || '-'}
                                         </div>
                                         <div className="col-span-1 text-slate-800">{record.type}</div>
-                                        <div className="col-span-2 text-slate-800 truncate">{record.details || '-'}</div>
-                                        <div className="col-span-2 text-slate-800 truncate">{record.result || '-'}</div>
+                                        <div className="col-span-3 text-slate-800 truncate">{record.details || '-'}</div>
+                                        <div className="col-span-3 text-slate-800 truncate">{record.result || '-'}</div>
                                         <div className="col-span-2 text-slate-800 text-nowrap">
                                             {record.processed_at
                                                 ? formatDateTime(record.processed_at)
@@ -497,40 +506,13 @@ export default function RecordsPage() {
                                                 {status.label}
                                             </span>
                                         </div>
-                                        <div className="col-span-4 flex gap-1 justify-end">
+                                        <div className="col-span-2 flex gap-1 justify-end">
                                             <button
-                                                onClick={() => setEditingRecord({ ...record, client_id: record.client_id || '' })}
-                                                className="text-[12px] font-medium text-slate-800 px-2 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all text-nowrap"
+                                                onClick={() => setViewingRecord(record)}
+                                                className="text-[12px] font-medium text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
                                             >
-                                                수정
+                                                상세보기
                                             </button>
-
-                                            {(userRole === 'operator' || userRole === 'admin' || userRole === 'callcenter') && statusKey === 'pending' && (
-                                                <button
-                                                    onClick={() => openProcessingModal(record)}
-                                                    className="text-[12px] font-medium text-blue-600 px-2 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-50 transition-all text-nowrap"
-                                                >
-                                                    1차 처리
-                                                </button>
-                                            )}
-
-                                            {statusKey !== 'completed' && (
-                                                <button
-                                                    onClick={() => openCompleteModal(record)}
-                                                    className="text-[12px] font-medium text-emerald-600 px-2 py-1.5 rounded-lg border border-emerald-200 hover:bg-emerald-50 transition-all text-nowrap"
-                                                >
-                                                    완료
-                                                </button>
-                                            )}
-
-                                            {(userRole === 'operator' || userRole === 'admin') && (
-                                                <button
-                                                    onClick={() => handleDeleteRecord(record.id)}
-                                                    className="text-[12px] font-medium text-red-600 px-2 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all shadow-sm text-nowrap"
-                                                >
-                                                    삭제
-                                                </button>
-                                            )}
                                         </div>
                                     </div>
 
