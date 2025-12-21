@@ -51,26 +51,74 @@ export default function DashboardPage() {
         try {
             setLoading(true);
 
-            // Fetch stats by status
+            // 먼저 사용자의 접근 가능 그룹 조회
+            const { data: { user } } = await supabase.auth.getUser();
+            let allowedGroups: string[] = [];
+            let allowedClientIds: string[] | null = null;
+
+            if (user) {
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('allowed_groups')
+                    .eq('id', user.id)
+                    .single();
+
+                allowedGroups = profile?.allowed_groups || [];
+
+                // 접근 가능한 그룹이 있으면 해당 거래처 ID 조회
+                if (allowedGroups.length > 0) {
+                    const { data: allowedClients } = await supabase
+                        .from('clients')
+                        .select('id')
+                        .in('group_id', allowedGroups);
+                    allowedClientIds = allowedClients?.map(c => c.id) || [];
+                }
+            }
+
+            // 거래처 수 조회 (그룹 필터링 적용)
+            let clientQuery = supabase.from('clients').select('*', { count: 'exact', head: true });
+            if (allowedGroups.length > 0) {
+                clientQuery = clientQuery.in('group_id', allowedGroups);
+            }
+            const { count: clientCount } = await clientQuery;
+
+            // 접수 내역 통계 조회 (그룹 필터링 적용)
+            let pendingQuery = supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'pending');
+            let processingQuery = supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'processing');
+            let completedQuery = supabase.from('service_records').select('*', { count: 'exact', head: true })
+                .eq('status', 'completed')
+                .gte('processed_at', new Date().toISOString().split('T')[0]);
+
+            if (allowedClientIds !== null && allowedClientIds.length > 0) {
+                pendingQuery = pendingQuery.in('client_id', allowedClientIds);
+                processingQuery = processingQuery.in('client_id', allowedClientIds);
+                completedQuery = completedQuery.in('client_id', allowedClientIds);
+            } else if (allowedClientIds !== null && allowedClientIds.length === 0) {
+                // 접근 가능한 거래처가 없으면 0으로 설정
+                setStats({ totalClients: 0, pendingRecords: 0, processingRecords: 0, completedToday: 0 });
+                setRecentRecords([]);
+                setLoading(false);
+                return;
+            }
+
             const [{ count: pendingCount }, { count: processingCount }, { count: completedCount }] = await Promise.all([
-                supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'pending'),
-                supabase.from('service_records').select('*', { count: 'exact', head: true }).eq('status', 'processing'),
-                supabase.from('service_records').select('*', { count: 'exact', head: true })
-                    .eq('status', 'completed')
-                    .gte('processed_at', new Date().toISOString().split('T')[0])
+                pendingQuery,
+                processingQuery,
+                completedQuery
             ]);
 
-            // Fetch total clients
-            const { count: clientCount } = await supabase
-                .from('clients')
-                .select('*', { count: 'exact', head: true });
-
-            // Fetch recent records
-            const { data: records } = await supabase
+            // 최근 접수 내역 조회 (그룹 필터링 적용)
+            let recordsQuery = supabase
                 .from('service_records')
                 .select('*, clients(name)')
                 .order('created_at', { ascending: false })
                 .limit(5);
+
+            if (allowedClientIds !== null && allowedClientIds.length > 0) {
+                recordsQuery = recordsQuery.in('client_id', allowedClientIds);
+            }
+
+            const { data: records } = await recordsQuery;
 
             // Fetch latest notice
             const { data: noticeData } = await supabase
@@ -80,9 +128,14 @@ export default function DashboardPage() {
                 .limit(1)
                 .single();
 
-            // Fetch clients and service types for the modal
+            // 거래처 목록 조회 (접수 등록용, 그룹 필터링 적용)
+            let clientsForModalQuery = supabase.from('clients').select('id, name').order('name');
+            if (allowedGroups.length > 0) {
+                clientsForModalQuery = clientsForModalQuery.in('group_id', allowedGroups);
+            }
+
             const [{ data: clientsData }, { data: typesData }] = await Promise.all([
-                supabase.from('clients').select('id, name').order('name'),
+                clientsForModalQuery,
                 supabase.from('service_types').select('*').order('sort_order')
             ]);
 

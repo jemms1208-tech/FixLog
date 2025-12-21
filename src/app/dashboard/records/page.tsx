@@ -154,6 +154,37 @@ export default function RecordsPage() {
             // 키:값 검색 파싱
             const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
 
+            // 거래처 이름으로 검색 시 먼저 client_id 조회
+            if (filters['거래처']) {
+                const { data: matchingClients } = await supabase
+                    .from('clients')
+                    .select('id')
+                    .ilike('name', `%${filters['거래처']}%`);
+
+                if (matchingClients && matchingClients.length > 0) {
+                    const matchingIds = matchingClients.map(c => c.id);
+                    // allowedClientIds가 있으면 교집합, 없으면 matchingIds만
+                    if (allowedClientIds !== null) {
+                        const intersection = matchingIds.filter(id => allowedClientIds!.includes(id));
+                        if (intersection.length === 0) {
+                            setRecords([]);
+                            setTotalCount(0);
+                            setLoading(false);
+                            return;
+                        }
+                        query = query.in('client_id', intersection);
+                    } else {
+                        query = query.in('client_id', matchingIds);
+                    }
+                } else {
+                    // 매칭되는 거래처가 없으면 빈 결과
+                    setRecords([]);
+                    setTotalCount(0);
+                    setLoading(false);
+                    return;
+                }
+            }
+
             // 키:값 필터 적용
             if (filters['유형']) query = query.ilike('type', `%${filters['유형']}%`);
             if (filters['내용']) query = query.ilike('details', `%${filters['내용']}%`);
