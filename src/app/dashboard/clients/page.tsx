@@ -8,6 +8,57 @@ import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
 
+// 전화번호 자동 포맷팅 함수
+const formatPhoneNumber = (value: string): string => {
+    // 숫자만 추출
+    const numbers = value.replace(/\D/g, '');
+
+    // 빈 문자열이면 그대로 반환
+    if (!numbers) return '';
+
+    // 02로 시작하는 서울 지역번호 (02-xxxx-xxxx)
+    if (numbers.startsWith('02')) {
+        if (numbers.length <= 2) return numbers;
+        if (numbers.length <= 6) return `${numbers.slice(0, 2)}-${numbers.slice(2)}`;
+        if (numbers.length <= 10) return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
+        return `${numbers.slice(0, 2)}-${numbers.slice(2, 6)}-${numbers.slice(6, 10)}`;
+    }
+
+    // 010, 011, 016, 017, 018, 019 휴대폰 번호 (010-xxxx-xxxx)
+    if (numbers.match(/^01[016789]/)) {
+        if (numbers.length <= 3) return numbers;
+        if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+        if (numbers.length <= 11) return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+    }
+
+    // 그 외 지역번호 (031, 032, 033 등) - 0xx-xxx-xxxx 또는 0xx-xxxx-xxxx
+    if (numbers.startsWith('0')) {
+        if (numbers.length <= 3) return numbers;
+        if (numbers.length <= 6) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+        if (numbers.length <= 10) {
+            // 10자리: 0xx-xxx-xxxx
+            return `${numbers.slice(0, 3)}-${numbers.slice(3, 6)}-${numbers.slice(6, 10)}`;
+        }
+        // 11자리: 0xx-xxxx-xxxx
+        return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+    }
+
+    // 0으로 시작하지 않는 경우 그냥 반환
+    return numbers;
+};
+
+// 사업자등록번호 자동 포맷팅 함수 (3-2-5: 123-45-67890)
+const formatBizRegNo = (value: string): string => {
+    // 숫자만 추출
+    const numbers = value.replace(/\D/g, '').slice(0, 10);
+
+    if (!numbers) return '';
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 5) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 5)}-${numbers.slice(5, 10)}`;
+};
+
 export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState('');
     const [clients, setClients] = useState<any[]>([]);
@@ -269,19 +320,21 @@ export default function ClientsPage() {
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">대표 전화번호</label>
                             <input
-                                placeholder="02-1234-5678"
+                                placeholder="0212345678"
+                                inputMode="numeric"
                                 className="input-field w-full text-[14px] font-medium text-slate-800"
                                 value={newClient.phone}
-                                onChange={(e) => setNewClient({ ...newClient, phone: e.target.value })}
+                                onChange={(e) => setNewClient({ ...newClient, phone: formatPhoneNumber(e.target.value) })}
                             />
                         </div>
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">담당자 연락처</label>
                             <input
-                                placeholder="010-1234-5678"
+                                placeholder="01012345678"
+                                inputMode="numeric"
                                 className="input-field w-full text-[14px] font-medium text-slate-800"
                                 value={newClient.contact_phone}
-                                onChange={(e) => setNewClient({ ...newClient, contact_phone: e.target.value })}
+                                onChange={(e) => setNewClient({ ...newClient, contact_phone: formatPhoneNumber(e.target.value) })}
                             />
                         </div>
                     </div>
@@ -292,7 +345,13 @@ export default function ClientsPage() {
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">사업자번호</label>
-                            <input className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.biz_reg_no} onChange={e => setNewClient({ ...newClient, biz_reg_no: e.target.value })} />
+                            <input
+                                placeholder="1234567890"
+                                inputMode="numeric"
+                                className="input-field w-full text-[14px] font-medium text-slate-800"
+                                value={newClient.biz_reg_no}
+                                onChange={e => setNewClient({ ...newClient, biz_reg_no: formatBizRegNo(e.target.value) })}
+                            />
                         </div>
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">관리 그룹</label>
@@ -410,17 +469,19 @@ export default function ClientsPage() {
                             <div>
                                 <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">대표 전화번호</label>
                                 <input
+                                    inputMode="numeric"
                                     className="input-field w-full text-[14px] font-medium text-slate-800"
                                     value={editingClient.phone || ''}
-                                    onChange={(e) => setEditingClient({ ...editingClient, phone: e.target.value })}
+                                    onChange={(e) => setEditingClient({ ...editingClient, phone: formatPhoneNumber(e.target.value) })}
                                 />
                             </div>
                             <div>
                                 <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">담당자 연락처</label>
                                 <input
+                                    inputMode="numeric"
                                     className="input-field w-full text-[14px] font-medium text-slate-800"
                                     value={editingClient.contact_phone || ''}
-                                    onChange={(e) => setEditingClient({ ...editingClient, contact_phone: e.target.value })}
+                                    onChange={(e) => setEditingClient({ ...editingClient, contact_phone: formatPhoneNumber(e.target.value) })}
                                 />
                             </div>
                         </div>
@@ -436,9 +497,11 @@ export default function ClientsPage() {
                             <div>
                                 <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">사업자번호</label>
                                 <input
+                                    placeholder="1234567890"
+                                    inputMode="numeric"
                                     className="input-field w-full text-[14px] font-medium text-slate-800"
                                     value={editingClient.biz_reg_no || ''}
-                                    onChange={e => setEditingClient({ ...editingClient, biz_reg_no: e.target.value })}
+                                    onChange={e => setEditingClient({ ...editingClient, biz_reg_no: formatBizRegNo(e.target.value) })}
                                 />
                             </div>
                             <div>
