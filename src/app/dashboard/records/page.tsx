@@ -107,7 +107,7 @@ export default function RecordsPage() {
         const filters: { [key: string]: string } = {};
         let generalSearch = '';
 
-        const keyValuePattern = /(거래처|유형|상태|내용|결과|접수일|처리일):([^\s,]+)/g;
+        const keyValuePattern = /(거래처|유형|상태|내용|결과|처리결과|접수|접수일|접수일시|처리|처리일|처리일시)\s*:\s*([^\s,]+)/g;
         let match;
         const usedRanges: [number, number][] = [];
 
@@ -193,16 +193,24 @@ export default function RecordsPage() {
             // 키:값 필터 적용
             if (filters['유형']) query = query.ilike('type', `%${filters['유형']}%`);
             if (filters['내용']) query = query.ilike('details', `%${filters['내용']}%`);
-            if (filters['결과']) query = query.ilike('result', `%${filters['결과']}%`);
-            if (filters['접수일']) {
-                // 날짜 형식: YYYY-MM-DD 또는 MM-DD 또는 MM/DD
-                const dateStr = filters['접수일'].replace(/\//g, '-');
+
+            if (filters['결과'] || filters['처리결과']) {
+                query = query.ilike('result', `%${filters['결과'] || filters['처리결과']}%`);
+            }
+
+            if (filters['접수'] || filters['접수일'] || filters['접수일시']) {
+                const term = filters['접수'] || filters['접수일'] || filters['접수일시'];
+                const dateStr = term.replace(/\//g, '-');
                 query = query.ilike('reception_at::text', `%${dateStr}%`);
             }
-            if (filters['처리일']) {
-                const dateStr = filters['처리일'].replace(/\//g, '-');
+
+            if (filters['처리'] || filters['처리일'] || filters['처리일시']) {
+                const term = filters['처리'] || filters['처리일'] || filters['처리일시'];
+                const dateStr = term.replace(/\//g, '-');
+                // 처리일시는 완료일(processed_at) 기준 검색
                 query = query.ilike('processed_at::text', `%${dateStr}%`);
             }
+
             if (filters['상태']) {
                 // 상태 한글 → 영문 매핑
                 const statusMap: { [key: string]: string } = { '대기': 'pending', '처리중': 'processing', '완료': 'completed' };
@@ -213,6 +221,8 @@ export default function RecordsPage() {
             // 일반 검색어가 있으면 전체 필드에서 검색
             if (generalSearch.trim()) {
                 const search = generalSearch;
+                // reception_at::text, processed_at::text 등 날짜 필드도 텍스트 검색에 포함시킬 수 있지만 복잡할 수 있음.
+                // 여기서는 주요 텍스트 필드만 검색
                 query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
             }
 

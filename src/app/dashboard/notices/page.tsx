@@ -255,24 +255,8 @@ export default function NoticesPage() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="flex flex-col items-end gap-2 shrink-0" onClick={e => e.stopPropagation()}>
+                                        <div className="flex flex-col items-end gap-2 shrink-0">
                                             <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
-                                            {(userRole === 'operator' || (userRole === 'admin' && notice.author?.role !== 'operator')) && (
-                                                <div className="flex items-center gap-1 opacity-100">
-                                                    <button
-                                                        onClick={() => setEditingNotice(notice)}
-                                                        className="text-[12px] font-medium text-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
-                                                    >
-                                                        수정
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDelete(notice.id)}
-                                                        className="text-[12px] font-medium text-red-600 px-3 py-1.5 rounded-lg border border-red-100 hover:bg-red-50 transition-all"
-                                                    >
-                                                        삭제
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                 </div>

@@ -137,7 +137,8 @@ export default function ClientsPage() {
         const filters: { [key: string]: string } = {};
         let generalSearch = '';
 
-        const keyValuePattern = /(상호|상호명|사업자|전화|담당자|주소|밴사|장비|그룹):([^\s,]+)/g;
+        // 콜론 주변 공백 허용
+        const keyValuePattern = /(상호|상호명|사업자|전화|담당자|주소|밴사|장비|그룹)\s*:\s*([^\s,]+)/g;
         let match;
         const usedRanges: [number, number][] = [];
 
