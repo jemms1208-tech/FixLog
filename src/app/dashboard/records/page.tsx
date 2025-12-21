@@ -120,12 +120,12 @@ export default function RecordsPage() {
         const filters: { [key: string]: string } = {};
         let generalSearch = '';
 
-        const keyValuePattern = /(거래처|유형|상태|내용|결과|처리결과|접수|접수일|접수일시|처리|처리일|처리일시)\s*:\s*([^\s,]+)/g;
+        const keyValuePattern = /(거래처|유형|상태|내용|결과|처리결과|접수|접수일|접수일시|처리|처리일|처리일시)\s*:\s*("([^"]+)"|([^\s,]+))/g;
         let match;
         const usedRanges: [number, number][] = [];
 
         while ((match = keyValuePattern.exec(query)) !== null) {
-            filters[match[1]] = match[2];
+            filters[match[1]] = match[3] || match[4];
             usedRanges.push([match.index, match.index + match[0].length]);
         }
 
@@ -172,18 +172,41 @@ export default function RecordsPage() {
             // 키:값 검색 파싱
             const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
 
-            // 거래처 이름으로 검색 시 먼저 client_id 조회
+            // 거래처 이름 또는 그룹명으로 검색 시 먼저 client_id 조회
             if (filters['거래처']) {
-                const { data: matchingClients } = await supabase
+                const term = filters['거래처'];
+
+                // 1. 상호명 검색
+                const { data: nameMatches } = await supabase
                     .from('clients')
                     .select('id')
-                    .ilike('name', `%${filters['거래처']}%`);
+                    .ilike('name', `%${term}%`);
 
-                if (matchingClients && matchingClients.length > 0) {
-                    const matchingIds = matchingClients.map(c => c.id);
-                    // allowedClientIds가 있으면 교집합, 없으면 matchingIds만
+                // 2. 그룹명 검색
+                let groupClientIds: string[] = [];
+                const { data: groupMatches } = await supabase
+                    .from('client_groups')
+                    .select('id')
+                    .ilike('name', `%${term}%`);
+
+                if (groupMatches && groupMatches.length > 0) {
+                    const groupIds = groupMatches.map(g => g.id);
+                    const { data: gClients } = await supabase
+                        .from('clients')
+                        .select('id')
+                        .in('group_id', groupIds);
+                    if (gClients) groupClientIds = gClients.map(c => c.id);
+                }
+
+                const allMatchingIds = Array.from(new Set([
+                    ...(nameMatches?.map(c => c.id) || []),
+                    ...groupClientIds
+                ]));
+
+                if (allMatchingIds.length > 0) {
+                    // allowedClientIds가 있으면 교집합, 없으면 allMatchingIds만
                     if (allowedClientIds !== null) {
-                        const intersection = matchingIds.filter(id => allowedClientIds!.includes(id));
+                        const intersection = allMatchingIds.filter(id => allowedClientIds!.includes(id));
                         if (intersection.length === 0) {
                             setRecords([]);
                             setTotalCount(0);
@@ -192,7 +215,7 @@ export default function RecordsPage() {
                         }
                         query = query.in('client_id', intersection);
                     } else {
-                        query = query.in('client_id', matchingIds);
+                        query = query.in('client_id', allMatchingIds);
                     }
                 } else {
                     // 매칭되는 거래처가 없으면 빈 결과

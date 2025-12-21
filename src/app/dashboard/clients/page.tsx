@@ -139,12 +139,13 @@ export default function ClientsPage() {
         let generalSearch = '';
 
         // 콜론 주변 공백 허용
-        const keyValuePattern = /(상호|상호명|사업자|전화|담당자|주소|밴사|장비|그룹)\s*:\s*([^\s,]+)/g;
+        // 콜론 주변 공백 허용, 따옴표 값 허용
+        const keyValuePattern = /(상호|상호명|사업자|전화|담당자|주소|밴사|장비|그룹)\s*:\s*("([^"]+)"|([^\s,]+))/g;
         let match;
         const usedRanges: [number, number][] = [];
 
         while ((match = keyValuePattern.exec(query)) !== null) {
-            filters[match[1]] = match[2];
+            filters[match[1]] = match[3] || match[4];
             usedRanges.push([match.index, match.index + match[0].length]);
         }
 
