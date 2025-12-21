@@ -40,6 +40,7 @@ export default function RecordsPage() {
 
     // 사용자 접근 가능 그룹
     const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
+    const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
 
     const supabase = createClient();
     const { showToast } = useToast();
@@ -59,9 +60,12 @@ export default function RecordsPage() {
         fetchServiceTypes();
     }, []);
 
+    // allowedGroups 로드 완료 후에만 데이터 가져오기
     useEffect(() => {
-        fetchRecords();
-    }, [debouncedSearch, currentPage, allowedGroups]);
+        if (allowedGroupsLoaded) {
+            fetchRecords();
+        }
+    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded]);
 
 
     async function fetchUserRole() {
@@ -73,6 +77,7 @@ export default function RecordsPage() {
                 setAllowedGroups(data.allowed_groups || []);
             }
         }
+        setAllowedGroupsLoaded(true);
     }
 
     async function fetchServiceTypes() {

@@ -75,6 +75,10 @@ export default function ClientsPage() {
     const [totalCount, setTotalCount] = useState(0);
     const PAGE_SIZE = 20;
 
+    // 사용자 접근 가능 그룹
+    const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
+    const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
+
     const [newClient, setNewClient] = useState({
         name: '',
         biz_reg_no: '',
@@ -103,12 +107,13 @@ export default function ClientsPage() {
         fetchGroups();
     }, []);
 
+    // allowedGroups 로드 완료 후에만 데이터 가져오기
     useEffect(() => {
-        fetchClients();
-    }, [debouncedSearch, currentPage]);
+        if (allowedGroupsLoaded) {
+            fetchClients();
+        }
+    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded]);
 
-    // 사용자 역할 및 접근 가능 그룹 조회
-    const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
 
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
@@ -120,6 +125,7 @@ export default function ClientsPage() {
                 setAllowedGroups(profile.allowed_groups || []);
             }
         }
+        setAllowedGroupsLoaded(true);
     }
 
     async function fetchGroups() {
