@@ -2,11 +2,28 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, Plus, Loader2, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, Minus, Loader2, Pencil, Trash2, MapPin } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
+
+// Daum Postcode API type declaration
+declare global {
+    interface Window {
+        daum: {
+            Postcode: new (options: {
+                oncomplete: (data: {
+                    zonecode: string;
+                    roadAddress: string;
+                    jibunAddress: string;
+                    buildingName: string;
+                    apartment: string;
+                }) => void;
+            }) => { open: () => void };
+        };
+    }
+}
 
 // 전화번호 자동 포맷팅 함수
 const formatPhoneNumber = (value: string): string => {
@@ -64,6 +81,8 @@ export default function ClientsPage() {
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [clients, setClients] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
+    const [vanCompanies, setVanCompanies] = useState<any[]>([]);
+    const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingClient, setEditingClient] = useState<any>(null);
@@ -86,13 +105,50 @@ export default function ClientsPage() {
         phone: '',
         contact_phone: '',
         address: '',
+        addressDetail: '',
         van_company: '',
-        equipment: '',
+        equipment: [] as { name: string; quantity: number }[],
         group_id: ''
     });
 
+    const formatEquipment = (equips: { name: string; quantity: number }[]) => {
+        return equips.map(e => `${e.name}(${e.quantity})`).join(', ');
+    };
+
+    const parseEquipment = (equipStr: string): { name: string; quantity: number }[] => {
+        if (!equipStr) return [];
+        return equipStr.split(',').map(item => {
+            const match = item.trim().match(/^(.+)\((\d+)\)$/);
+            if (match) {
+                return { name: match[1], quantity: parseInt(match[2]) };
+            }
+            return { name: item.trim(), quantity: 1 }; // Default to 1 if no quantity specified
+        }).filter(item => item.name);
+    };
+
     const supabase = createClient();
     const { showToast } = useToast();
+
+    // Daum Postcode handler
+    const openAddressSearch = (callback: (address: string) => void) => {
+        if (typeof window !== 'undefined' && window.daum) {
+            new window.daum.Postcode({
+                oncomplete: (data) => {
+                    // Road address preferred, fallback to jibun
+                    let fullAddress = data.roadAddress || data.jibunAddress;
+
+                    // Add building name if exists
+                    if (data.buildingName && data.apartment === 'Y') {
+                        fullAddress += ` (${data.buildingName})`;
+                    }
+
+                    callback(fullAddress);
+                }
+            }).open();
+        } else {
+            showToast('\uC8FC\uC18C \uAC80\uC0C9 \uC11C\uBE44\uC2A4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911\uC785\uB2C8\uB2E4. \uC7A0\uC2DC \uD6C4 \uB2E4\uC2DC \uC2DC\uB3C4\uD574\uC8FC\uC138\uC694.', 'error');
+        }
+    };
 
     // 검색어 디바운싱 (300ms)
     useEffect(() => {
@@ -105,7 +161,7 @@ export default function ClientsPage() {
 
     useEffect(() => {
         fetchUserRole();
-        fetchGroups();
+        fetchMasterData();
     }, []);
 
     // allowedGroups 로드 완료 후에만 데이터 가져오기
@@ -127,9 +183,15 @@ export default function ClientsPage() {
         setAllowedGroupsLoaded(true);
     }
 
-    async function fetchGroups() {
-        const { data } = await supabase.from('client_groups').select('*');
-        if (data) setGroups(data);
+    async function fetchMasterData() {
+        const [groupsRes, vansRes, equipsRes] = await Promise.all([
+            supabase.from('client_groups').select('*').order('name'),
+            supabase.from('van_companies').select('*').order('sort_order'),
+            supabase.from('equipment_types').select('*').order('sort_order')
+        ]);
+        if (groupsRes.data) setGroups(groupsRes.data);
+        if (vansRes.data) setVanCompanies(vansRes.data);
+        if (equipsRes.data) setEquipmentTypes(equipsRes.data);
     }
 
 
@@ -219,18 +281,29 @@ export default function ClientsPage() {
         if (isSubmitting) return;
         setIsSubmitting(true);
         try {
+            // Combine address and addressDetail
+            const fullAddress = newClient.addressDetail
+                ? `${newClient.address} ${newClient.addressDetail}`
+                : newClient.address;
+
             const clientData = {
-                ...newClient,
+                name: newClient.name,
+                biz_reg_no: newClient.biz_reg_no,
+                phone: newClient.phone,
+                contact_phone: newClient.contact_phone,
+                address: fullAddress,
+                van_company: newClient.van_company,
+                equipment: formatEquipment(newClient.equipment),
                 group_id: newClient.group_id || null
             };
             const { error } = await supabase.from('clients').insert([clientData]);
             if (error) throw error;
             setIsModalOpen(false);
             fetchClients();
-            setNewClient({ name: '', biz_reg_no: '', phone: '', contact_phone: '', address: '', van_company: '', equipment: '', group_id: '' });
-            showToast('거래처가 성공적으로 등록되었습니다.', 'success');
+            setNewClient({ name: '', biz_reg_no: '', phone: '', contact_phone: '', address: '', addressDetail: '', van_company: '', equipment: [], group_id: '' });
+            showToast('\uAC70\uB798\uCC98\uAC00 \uC131\uACF5\uC801\uC73C\uB85C \uB4F1\uB85D\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
         } catch (error: any) {
-            showToast(`등록 실패: ${error.message}`, 'error');
+            showToast(`\uB4F1\uB85D \uC2E4\uD328: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -241,6 +314,11 @@ export default function ClientsPage() {
         if (!editingClient || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            // Combine address and addressDetail
+            const fullAddress = editingClient.addressDetail
+                ? `${editingClient.address} ${editingClient.addressDetail}`
+                : editingClient.address;
+
             const { error } = await supabase
                 .from('clients')
                 .update({
@@ -248,18 +326,18 @@ export default function ClientsPage() {
                     biz_reg_no: editingClient.biz_reg_no,
                     phone: editingClient.phone,
                     contact_phone: editingClient.contact_phone,
-                    address: editingClient.address,
+                    address: fullAddress,
                     van_company: editingClient.van_company,
-                    equipment: editingClient.equipment,
+                    equipment: Array.isArray(editingClient.equipment) ? formatEquipment(editingClient.equipment) : editingClient.equipment,
                     group_id: editingClient.group_id || null
                 })
                 .eq('id', editingClient.id);
             if (error) throw error;
             setEditingClient(null);
-            showToast('거래처 정보가 수정되었습니다.', 'success');
+            showToast('\uAC70\uB798\uCC98 \uC815\uBCF4\uAC00 \uC218\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
             fetchClients();
         } catch (error: any) {
-            showToast(`수정 실패: ${error.message}`, 'error');
+            showToast(`\uC218\uC815 \uC2E4\uD328: ${error.message}`, 'error');
         } finally {
             setIsSubmitting(false);
         }
@@ -353,15 +431,14 @@ export default function ClientsPage() {
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                     {/* PC 전용 헤더 (lg 이상) */}
                     <div className="hidden lg:grid grid-cols-20 gap-2 p-4 bg-slate-50 border-b text-[11px] font-medium text-slate-800 uppercase">
-                        <div className="col-span-3">상호명</div>
+                        <div className="col-span-4">상호명</div>
                         <div className="col-span-2">사업자번호</div>
                         <div className="col-span-2 text-nowrap">전화번호</div>
                         <div className="col-span-2 text-nowrap">담당자연락처</div>
-                        <div className="col-span-3">주소</div>
+                        <div className="col-span-4">주소</div>
                         <div className="col-span-2 text-center">그룹</div>
                         <div className="col-span-2 text-center">장비</div>
                         <div className="col-span-2 text-center">밴사</div>
-                        <div className="col-span-2 text-right">관리</div>
                     </div>
 
                     {/* 목록 */}
@@ -369,12 +446,15 @@ export default function ClientsPage() {
                         {clients.map((client: any) => (
                             <div key={client.id} className="group">
                                 {/* PC 레이아웃 (lg 이상) */}
-                                <div className="hidden lg:grid grid-cols-20 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center">
-                                    <div className="col-span-3 text-slate-800 truncate">{client.name}</div>
+                                <div
+                                    onClick={() => setViewingClient(client)}
+                                    className="hidden lg:grid grid-cols-20 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center cursor-pointer"
+                                >
+                                    <div className="col-span-4 text-slate-800 truncate">{client.name}</div>
                                     <div className="col-span-2 text-slate-800 truncate">{client.biz_reg_no || '-'}</div>
                                     <div className="col-span-2 text-slate-800 truncate">{client.phone || '-'}</div>
                                     <div className="col-span-2 text-slate-800 truncate">{client.contact_phone || '-'}</div>
-                                    <div className="col-span-3 text-slate-800 truncate">{client.address || '-'}</div>
+                                    <div className="col-span-4 text-slate-800 truncate">{client.address || '-'}</div>
                                     <div className="col-span-2 flex justify-center">
                                         <span className="text-[11px] bg-slate-100 text-slate-800 px-2 py-1 rounded font-medium uppercase truncate max-w-full">
                                             {client.client_groups?.name || '미구분'}
@@ -385,14 +465,6 @@ export default function ClientsPage() {
                                     </div>
                                     <div className="col-span-2 text-center text-slate-800 truncate">
                                         {client.van_company || '-'}
-                                    </div>
-                                    <div className="col-span-2 flex justify-end">
-                                        <button
-                                            onClick={() => setViewingClient(client)}
-                                            className="text-[12px] font-medium text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
-                                        >
-                                            상세보기
-                                        </button>
                                     </div>
                                 </div>
 
@@ -502,7 +574,30 @@ export default function ClientsPage() {
                     </div>
                     <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">주소</label>
-                        <textarea rows={3} className="input-field w-full text-[14px] font-medium text-slate-800 resize-none" value={newClient.address} onChange={e => setNewClient({ ...newClient, address: e.target.value })} />
+                        <div className="flex gap-2 mb-2">
+                            <input
+                                type="text"
+                                className="input-field w-full text-[14px] font-medium text-slate-800 flex-1 bg-slate-50"
+                                value={newClient.address}
+                                placeholder="주소 검색 버튼을 클릭하세요"
+                                readOnly
+                            />
+                            <button
+                                type="button"
+                                onClick={() => openAddressSearch((address) => setNewClient({ ...newClient, address }))}
+                                className="btn-outline shrink-0 flex items-center gap-1.5 px-3"
+                            >
+                                <MapPin className="w-4 h-4" />
+                                검색
+                            </button>
+                        </div>
+                        <input
+                            type="text"
+                            className="input-field w-full text-[14px] font-medium text-slate-800"
+                            value={newClient.addressDetail}
+                            onChange={e => setNewClient({ ...newClient, addressDetail: e.target.value })}
+                            placeholder="상세주소 (동/호수 등)"
+                        />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -523,14 +618,89 @@ export default function ClientsPage() {
                             </select>
                         </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">밴사</label>
-                            <input className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.van_company} onChange={e => setNewClient({ ...newClient, van_company: e.target.value })} />
-                        </div>
-                        <div>
-                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비</label>
-                            <input className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.equipment} onChange={e => setNewClient({ ...newClient, equipment: e.target.value })} />
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사</label>
+                        <select
+                            className="input-field w-full text-[14px] font-medium text-slate-800"
+                            value={newClient.van_company}
+                            onChange={e => setNewClient({ ...newClient, van_company: e.target.value })}
+                        >
+                            <option value="">선택 안함</option>
+                            {vanCompanies.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비 및 대수</label>
+                        <div className="space-y-2 p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[100px]">
+                            {equipmentTypes.map(eq => {
+                                const isSelected = newClient.equipment.some((e: any) => e.name === eq.name);
+                                const selectedItem = newClient.equipment.find((e: any) => e.name === eq.name);
+
+                                return (
+                                    <div key={eq.id} className="flex items-center justify-between bg-white p-2 rounded border border-slate-200">
+                                        <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                    if (e.target.checked) {
+                                                        setNewClient({ ...newClient, equipment: [...newClient.equipment, { name: eq.name, quantity: 1 }] });
+                                                    } else {
+                                                        setNewClient({ ...newClient, equipment: newClient.equipment.filter((x: any) => x.name !== eq.name) });
+                                                    }
+                                                }}
+                                                className="w-4 h-4 rounded text-blue-600"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">{eq.name}</span>
+                                        </label>
+
+                                        {isSelected && (
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentQty = selectedItem?.quantity || 1;
+                                                            if (currentQty > 1) {
+                                                                setNewClient({
+                                                                    ...newClient,
+                                                                    equipment: newClient.equipment.map((x: any) => x.name === eq.name ? { ...x, quantity: currentQty - 1 } : x)
+                                                                });
+                                                            }
+                                                        }}
+                                                        className="p-1 hover:bg-white rounded transition-colors text-slate-500 hover:text-blue-600"
+                                                    >
+                                                        <Minus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                    <input
+                                                        type="text"
+                                                        readOnly
+                                                        value={selectedItem?.quantity || 1}
+                                                        className="w-10 text-center bg-transparent text-sm font-bold text-slate-700 outline-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentQty = selectedItem?.quantity || 1;
+                                                            setNewClient({
+                                                                ...newClient,
+                                                                equipment: newClient.equipment.map((x: any) => x.name === eq.name ? { ...x, quantity: currentQty + 1 } : x)
+                                                            });
+                                                        }}
+                                                        className="p-1 hover:bg-white rounded transition-colors text-slate-500 hover:text-blue-600"
+                                                    >
+                                                        <Plus className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                                <span className="text-xs text-slate-500 font-bold pr-1">대</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {equipmentTypes.length === 0 && (
+                                <p className="text-center py-4 text-xs text-slate-400">등록된 장비 유형이 없습니다.</p>
+                            )}
                         </div>
                     </div>
                     <div className="pt-2 flex gap-2">
@@ -649,11 +819,29 @@ export default function ClientsPage() {
                         </div>
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">주소</label>
-                            <textarea
-                                rows={3}
-                                className="input-field w-full text-[14px] font-medium text-slate-800 resize-none"
-                                value={editingClient.address || ''}
-                                onChange={e => setEditingClient({ ...editingClient, address: e.target.value })}
+                            <div className="flex gap-2 mb-2">
+                                <input
+                                    type="text"
+                                    className="input-field w-full text-[14px] font-medium text-slate-800 flex-1 bg-slate-50"
+                                    value={editingClient.address || ''}
+                                    placeholder="주소 검색 버튼을 클릭하세요"
+                                    readOnly
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => openAddressSearch((address) => setEditingClient({ ...editingClient, address, addressDetail: '' }))}
+                                    className="btn-outline shrink-0 flex items-center gap-1.5 px-3"
+                                >
+                                    <MapPin className="w-4 h-4" />
+                                    검색
+                                </button>
+                            </div>
+                            <input
+                                type="text"
+                                className="input-field w-full text-[14px] font-medium text-slate-800"
+                                value={editingClient.addressDetail || ''}
+                                onChange={e => setEditingClient({ ...editingClient, addressDetail: e.target.value })}
+                                placeholder="상세주소 (동/호수 등)"
                             />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
@@ -679,22 +867,93 @@ export default function ClientsPage() {
                                 </select>
                             </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">밴사</label>
-                                <input
-                                    className="input-field w-full text-[14px] font-medium text-slate-800"
-                                    value={editingClient.van_company || ''}
-                                    onChange={e => setEditingClient({ ...editingClient, van_company: e.target.value })}
-                                />
-                            </div>
-                            <div>
-                                <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비</label>
-                                <input
-                                    className="input-field w-full text-[14px] font-medium text-slate-800"
-                                    value={editingClient.equipment || ''}
-                                    onChange={e => setEditingClient({ ...editingClient, equipment: e.target.value })}
-                                />
+                        <div>
+                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사</label>
+                            <select
+                                className="input-field w-full text-[14px] font-medium text-slate-800"
+                                value={editingClient.van_company || ''}
+                                onChange={e => setEditingClient({ ...editingClient, van_company: e.target.value })}
+                            >
+                                <option value="">선택 안함</option>
+                                {vanCompanies.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비 및 대수</label>
+                            <div className="space-y-2 p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[100px]">
+                                {equipmentTypes.map(eq => {
+                                    const currentEquip = Array.isArray(editingClient.equipment)
+                                        ? editingClient.equipment
+                                        : parseEquipment(editingClient.equipment || '');
+
+                                    const isSelected = currentEquip.some((e: any) => e.name === eq.name);
+                                    const selectedItem = currentEquip.find((e: any) => e.name === eq.name);
+
+                                    return (
+                                        <div key={eq.id} className="flex items-center justify-between bg-white p-2 rounded border border-slate-200">
+                                            <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                                        if (e.target.checked) {
+                                                            setEditingClient({ ...editingClient, equipment: [...currentEquip, { name: eq.name, quantity: 1 }] });
+                                                        } else {
+                                                            setEditingClient({ ...editingClient, equipment: currentEquip.filter((x: any) => x.name !== eq.name) });
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 rounded text-blue-600"
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">{eq.name}</span>
+                                            </label>
+
+                                            {isSelected && (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const currentQty = selectedItem?.quantity || 1;
+                                                                if (currentQty > 1) {
+                                                                    setEditingClient({
+                                                                        ...editingClient,
+                                                                        equipment: currentEquip.map((x: any) => x.name === eq.name ? { ...x, quantity: currentQty - 1 } : x)
+                                                                    });
+                                                                }
+                                                            }}
+                                                            className="p-1 hover:bg-white rounded transition-colors text-slate-500 hover:text-blue-600"
+                                                        >
+                                                            <Minus className="w-3.5 h-3.5" />
+                                                        </button>
+                                                        <input
+                                                            type="text"
+                                                            readOnly
+                                                            value={selectedItem?.quantity || 1}
+                                                            className="w-10 text-center bg-transparent text-sm font-bold text-slate-700 outline-none"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const currentQty = selectedItem?.quantity || 1;
+                                                                setEditingClient({
+                                                                    ...editingClient,
+                                                                    equipment: currentEquip.map((x: any) => x.name === eq.name ? { ...x, quantity: currentQty + 1 } : x)
+                                                                });
+                                                            }}
+                                                            className="p-1 hover:bg-white rounded transition-colors text-slate-500 hover:text-blue-600"
+                                                        >
+                                                            <Plus className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                    <span className="text-xs text-slate-500 font-bold pr-1">대</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                                {equipmentTypes.length === 0 && (
+                                    <p className="text-center py-4 text-xs text-slate-400">등록된 장비 유형이 없습니다.</p>
+                                )}
                             </div>
                         </div>
                         <div className="pt-2 flex gap-2">

@@ -527,9 +527,18 @@ export default function RecordsPage() {
         }
     }
 
-    function formatDateTime(dateStr: string) {
+    function formatDateTime(dateStr: string | null | undefined) {
+        if (!dateStr) return '-';
         const d = new Date(dateStr);
-        return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+        if (isNaN(d.getTime())) return '-';
+
+        const year = d.getFullYear().toString().slice(2);
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        const hours = d.getHours().toString().padStart(2, '0');
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
     }
 
     function formatClientName(client: any) {
@@ -540,14 +549,14 @@ export default function RecordsPage() {
 
     async function handleExportExcel() {
         const dataToExport = records.map(r => ({
-            '접수일시': new Date(r.reception_at).toLocaleString(),
+            '접수일시': formatDateTime(r.reception_at),
             '거래처명': formatClientName(r.clients),
             '유형': r.type,
             '내용': r.details || '-',
             '처리상태': STATUS_MAP[r.status as keyof typeof STATUS_MAP]?.label || (r.processed_at ? '완료' : '대기'),
             '처리일시': r.processed_at
-                ? new Date(r.processed_at).toLocaleString()
-                : (r.started_at ? new Date(r.started_at).toLocaleString() : '-'),
+                ? formatDateTime(r.processed_at)
+                : (r.started_at ? formatDateTime(r.started_at) : '-'),
             '처리결과': r.result || '-'
         }));
 
@@ -655,11 +664,10 @@ export default function RecordsPage() {
                         <div className="col-span-2">접수일시</div>
                         <div className="col-span-2">거래처</div>
                         <div className="col-span-1">유형</div>
-                        <div className="col-span-3">내용</div>
+                        <div className="col-span-4">내용</div>
                         <div className="col-span-3">처리결과</div>
                         <div className="col-span-2">처리일시</div>
-                        <div className="col-span-1 text-center">상태</div>
-                        <div className="col-span-2 text-right">관리</div>
+                        <div className="col-span-2 text-center">상태</div>
                     </div>
 
                     {/* 목록 */}
@@ -671,7 +679,10 @@ export default function RecordsPage() {
                             return (
                                 <div key={record.id} className="group">
                                     {/* PC 레이아웃 (lg 이상) */}
-                                    <div className="hidden lg:grid grid-cols-16 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center">
+                                    <div
+                                        onClick={() => setViewingRecord(record)}
+                                        className="hidden lg:grid grid-cols-16 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center cursor-pointer"
+                                    >
                                         <div className="col-span-2 text-slate-800 text-nowrap">
                                             {formatDateTime(record.reception_at)}
                                         </div>
@@ -679,26 +690,18 @@ export default function RecordsPage() {
                                             {formatClientName(record.clients)}
                                         </div>
                                         <div className="col-span-1 text-slate-800">{record.type}</div>
-                                        <div className="col-span-3 text-slate-800 truncate">{record.details || '-'}</div>
+                                        <div className="col-span-4 text-slate-800 truncate">{record.details || '-'}</div>
                                         <div className="col-span-3 text-slate-800 truncate">{record.result || '-'}</div>
                                         <div className="col-span-2 text-slate-800 text-nowrap">
                                             {record.processed_at
                                                 ? formatDateTime(record.processed_at)
                                                 : (record.started_at ? formatDateTime(record.started_at) : '-')}
                                         </div>
-                                        <div className="col-span-1 flex justify-center">
-                                            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-full uppercase whitespace-nowrap ${status.bg} ${status.color}`}>
+                                        <div className="col-span-2 flex justify-center">
+                                            <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full uppercase whitespace-nowrap ${status.bg} ${status.color}`}>
                                                 <status.icon className="w-3 h-3" />
                                                 {status.label}
                                             </span>
-                                        </div>
-                                        <div className="col-span-2 flex gap-1 justify-end">
-                                            <button
-                                                onClick={() => setViewingRecord(record)}
-                                                className="text-[12px] font-medium text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-white hover:shadow-sm transition-all"
-                                            >
-                                                상세보기
-                                            </button>
                                         </div>
                                     </div>
 
@@ -708,24 +711,32 @@ export default function RecordsPage() {
                                         onClick={() => setViewingRecord(record)}
                                     >
                                         <div className="flex flex-col gap-1 min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className={`w-1.5 h-1.5 rounded-full ${statusKey === 'completed' ? 'bg-emerald-500' : statusKey === 'processing' ? 'bg-amber-500' : 'bg-red-500'}`} />
-                                                <span className="font-medium text-slate-800 truncate text-[14px]">
-                                                    {formatClientName(record.clients)}
+                                            <div className="flex items-center justify-between pr-2">
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusKey === 'completed' ? 'bg-emerald-500' : statusKey === 'processing' ? 'bg-amber-500' : 'bg-red-500'}`} />
+                                                    <span className="font-bold text-slate-900 truncate text-[15px]">
+                                                        {formatClientName(record.clients)}
+                                                    </span>
+                                                </div>
+                                                <span className={`text-[12px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${status.bg} ${status.color}`}>
+                                                    {status.label}
                                                 </span>
                                             </div>
-                                            <div className="flex items-center gap-2 text-[14px] text-slate-800 font-medium">
-                                                <span className="whitespace-nowrap">{record.type}</span>
+                                            <div className="flex items-center gap-2 text-[14px] text-slate-600 font-medium">
+                                                <span className="whitespace-nowrap font-bold text-slate-800">{record.type}</span>
                                                 <span className="text-slate-300 font-normal">|</span>
                                                 <span className="truncate">{record.details || '내용 없음'}</span>
                                             </div>
+                                            {(record.processed_at || record.started_at) && (
+                                                <div className="text-[12px] text-slate-500 font-medium bg-slate-50 px-2 py-1 rounded-lg mt-1 border border-slate-100 flex items-center gap-2 leading-none h-7">
+                                                    <span className="font-bold text-slate-700 whitespace-nowrap">{record.processed_at ? '완료시간:' : '진행시간:'}</span>
+                                                    <span>{formatDateTime(record.processed_at || record.started_at)}</span>
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="flex flex-col items-end gap-1 shrink-0 ml-4">
-                                            <span className="text-[14px] text-slate-800 font-medium uppercase">
+                                        <div className="flex flex-col items-end shrink-0 ml-4">
+                                            <span className="text-[13px] text-slate-400 font-bold uppercase tracking-tighter">
                                                 {formatDateTime(record.reception_at)}
-                                            </span>
-                                            <span className={`text-[14px] font-medium px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}>
-                                                {status.label}
                                             </span>
                                         </div>
                                     </div>
@@ -791,25 +802,50 @@ export default function RecordsPage() {
                             value={clientSearch}
                             onChange={e => setClientSearch(e.target.value)}
                         />
-                        <select
-                            required
-                            className="input-field w-full"
-                            value={newRecord.client_id}
-                            onChange={e => setNewRecord({ ...newRecord, client_id: e.target.value })}
-                            size={5}
-                        >
-                            <option value="">거래처를 선택하세요</option>
+                        <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
                             {clientList
                                 .filter((c: any) =>
                                     c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
                                     c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
                                 )
-                                .map((client: any) => (
-                                    <option key={client.id} value={client.id} className="py-1">
-                                        {client.client_groups?.name ? `(${client.client_groups.name}) ` : ''}{client.name}
-                                    </option>
-                                ))}
-                        </select>
+                                .map((client: any) => {
+                                    const isSelected = newRecord.client_id === client.id;
+                                    return (
+                                        <div
+                                            key={client.id}
+                                            onClick={() => setNewRecord({ ...newRecord, client_id: client.id })}
+                                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
+                                                ? 'bg-blue-50 border-l-4 border-blue-600'
+                                                : 'hover:bg-slate-50'
+                                                }`}
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
+                                                    {client.name}
+                                                </span>
+                                                {client.biz_reg_no && (
+                                                    <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                )}
+                                            </div>
+                                            {client.client_groups?.name && (
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                    {client.client_groups.name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            {clientList.filter((c: any) =>
+                                c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                            ).length === 0 && (
+                                    <div className="p-8 text-center text-sm text-slate-400">
+                                        검색 결과가 없습니다.
+                                    </div>
+                                )}
+                        </div>
+                        <input type="hidden" required value={newRecord.client_id} />
                     </div>
 
                     <div className="space-y-8">
@@ -863,24 +899,41 @@ export default function RecordsPage() {
                                 value={clientSearch}
                                 onChange={e => setClientSearch(e.target.value)}
                             />
-                            <select
-                                className="input-field w-full"
-                                value={editingRecord.client_id || ''}
-                                onChange={e => setEditingRecord({ ...editingRecord, client_id: e.target.value })}
-                                size={5} // 목록이 보이도록 확장
-                            >
-                                <option value="">선택 안함</option>
+                            <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
                                 {clientList
                                     .filter((c: any) =>
                                         c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
                                         c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
                                     )
-                                    .map((client: any) => (
-                                        <option key={client.id} value={client.id} className="py-1">
-                                            {client.client_groups?.name ? `(${client.client_groups.name}) ` : ''}{client.name}
-                                        </option>
-                                    ))}
-                            </select>
+                                    .map((client: any) => {
+                                        const isSelected = editingRecord.client_id === client.id;
+                                        return (
+                                            <div
+                                                key={client.id}
+                                                onClick={() => setEditingRecord({ ...editingRecord, client_id: client.id })}
+                                                className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
+                                                    ? 'bg-blue-50 border-l-4 border-blue-600'
+                                                    : 'hover:bg-slate-50'
+                                                    }`}
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
+                                                        {client.name}
+                                                    </span>
+                                                    {client.biz_reg_no && (
+                                                        <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                    )}
+                                                </div>
+                                                {client.client_groups?.name && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                                                        }`}>
+                                                        {client.client_groups.name}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                            </div>
                         </div>        <div>
                             <label className="text-sm font-medium block mb-1">유형</label>
                             <div className="grid grid-cols-3 gap-2">
@@ -1024,7 +1077,7 @@ export default function RecordsPage() {
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1 border-b border-slate-100 pb-2">
                                     <label className="text-[11px] font-medium text-slate-800 uppercase">접수일시</label>
-                                    <p className="text-[14px] font-medium text-slate-800">{new Date(viewingRecord.reception_at).toLocaleString()}</p>
+                                    <p className="text-[14px] font-medium text-slate-800">{formatDateTime(viewingRecord.reception_at)}</p>
                                 </div>
                                 <div className="space-y-1 border-b border-slate-100 pb-2">
                                     <label className="text-[11px] font-medium text-slate-800 uppercase">상태</label>
@@ -1061,13 +1114,13 @@ export default function RecordsPage() {
                                     {viewingRecord.started_at && (
                                         <div className="space-y-1">
                                             <label className="text-[11px] font-medium text-slate-800 uppercase">처리 시작</label>
-                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{new Date(viewingRecord.started_at).toLocaleString()}</p>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{formatDateTime(viewingRecord.started_at)}</p>
                                         </div>
                                     )}
                                     {viewingRecord.processed_at && (
                                         <div className="space-y-1">
                                             <label className="text-[11px] font-medium text-slate-800 uppercase">처리 완료</label>
-                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{new Date(viewingRecord.processed_at).toLocaleString()}</p>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{formatDateTime(viewingRecord.processed_at)}</p>
                                         </div>
                                     )}
                                 </div>

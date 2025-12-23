@@ -104,6 +104,8 @@ export default function AdminPage() {
     const [profiles, setProfiles] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
     const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+    const [vanCompanies, setVanCompanies] = useState<any[]>([]);
+    const [equipmentTypes, setEquipmentTypes] = useState<any[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
 
     // Tabs
@@ -129,6 +131,8 @@ export default function AdminPage() {
 
     const [newGroupName, setNewGroupName] = useState('');
     const [newServiceType, setNewServiceType] = useState('');
+    const [newVanCompany, setNewVanCompany] = useState('');
+    const [newEquipmentType, setNewEquipmentType] = useState('');
 
     // Current User
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -157,14 +161,18 @@ export default function AdminPage() {
             const { data: profiles, error: pError } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
             const { data: groups, error: gError } = await supabase.from('client_groups').select('*').order('name');
             const { data: types, error: tError } = await supabase.from('service_types').select('*').order('sort_order');
+            const { data: vans, error: vError } = await supabase.from('van_companies').select('*').order('sort_order');
+            const { data: equips, error: eError } = await supabase.from('equipment_types').select('*').order('sort_order');
 
             if (pError || gError || tError) throw pError || gError || tError;
 
             setProfiles(profiles || []);
             setGroups(groups || []);
             setServiceTypes(types || []);
+            setVanCompanies(vans || []);
+            setEquipmentTypes(equips || []);
         } catch (error: any) {
-            showToast(`데이터 로드 실패: ${error.message}`, 'error');
+            showToast(`\uB370\uC774\uD130 \uB85C\uB4DC \uC2E4\uD328: ${error.message}`, 'error');
         } finally {
             setLoading(false);
         }
@@ -189,11 +197,19 @@ export default function AdminPage() {
     async function handleAddGroup(e: React.FormEvent) {
         e.preventDefault();
         if (!newGroupName.trim()) return;
+
+        const tempId = Math.random().toString();
+        const groupName = newGroupName;
+        const previousGroups = [...groups];
+
+        // Optimistic Update
+        setGroups([...groups, { id: tempId, name: groupName }]);
+        setNewGroupName('');
+
         try {
-            const { data, error } = await supabase.from('client_groups').insert([{ name: newGroupName }]).select().single();
+            const { data, error } = await supabase.from('client_groups').insert([{ name: groupName }]).select().single();
             if (error) throw error;
 
-            // 활동 로그 기록
             await supabase.from('activity_logs').insert([{
                 user_id: currentUserId,
                 user_email: profiles.find(p => p.id === currentUserId)?.email,
@@ -201,27 +217,30 @@ export default function AdminPage() {
                 action: 'CREATE_GROUP',
                 target_type: 'group',
                 target_id: data?.id,
-                details: { name: newGroupName }
+                details: { name: groupName }
             }]);
 
-            setNewGroupName('');
-            showToast('새 그룹이 추가되었습니다.', 'success');
-            fetchAdminData();
+            showToast('\uC0C8 \uADF8\uB8F9\uC774 \uCD94\uAC00\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+            fetchAdminData(); // Sync with actual server data
         } catch (error: any) {
-            showToast(`그룹 추가 오류: ${error.message}`, 'error');
+            setGroups(previousGroups); // Rollback
+            showToast(`\uADF8\uB8F9 \uCD94\uAC00 \uC624\uB958: ${error.message}`, 'error');
         }
     }
 
     async function handleDeleteGroup(id: string) {
-        if (!confirm('그룹을 삭제하시겠습니까?')) return;
-        try {
-            // 삭제 전에 그룹명 가져오기
-            const groupToDelete = groups.find(g => g.id === id);
+        if (!confirm('\uADF8\uB8F9\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
 
+        const previousGroups = [...groups];
+        const groupToDelete = groups.find(g => g.id === id);
+
+        // Optimistic Update
+        setGroups(groups.filter(g => g.id !== id));
+
+        try {
             const { error } = await supabase.from('client_groups').delete().eq('id', id);
             if (error) throw error;
 
-            // 활동 로그 기록
             await supabase.from('activity_logs').insert([{
                 user_id: currentUserId,
                 user_email: profiles.find(p => p.id === currentUserId)?.email,
@@ -232,24 +251,32 @@ export default function AdminPage() {
                 details: { name: groupToDelete?.name }
             }]);
 
-            showToast('그룹이 삭제되었습니다.', 'success');
-            fetchAdminData();
+            showToast('\uADF8\uB8F9\uC774 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
         } catch (error: any) {
-            showToast(`그룹 삭제 오류: ${error.message}`, 'error');
+            setGroups(previousGroups); // Rollback
+            showToast(`\uADF8\uB8F9 \uC0AD\uC81C \uC624\uB958: ${error.message}`, 'error');
         }
     }
 
     async function handleAddServiceType(e: React.FormEvent) {
         e.preventDefault();
         if (!newServiceType.trim()) return;
+
+        const tempId = Math.random().toString();
+        const typeName = newServiceType;
+        const previousTypes = [...serviceTypes];
+
+        // Optimistic Update
+        setServiceTypes([...serviceTypes, { id: tempId, name: typeName }]);
+        setNewServiceType('');
+
         try {
             const { data, error } = await supabase.from('service_types').insert([{
-                name: newServiceType,
+                name: typeName,
                 sort_order: serviceTypes.length
             }]).select().single();
             if (error) throw error;
 
-            // 활동 로그 기록
             await supabase.from('activity_logs').insert([{
                 user_id: currentUserId,
                 user_email: profiles.find(p => p.id === currentUserId)?.email,
@@ -257,27 +284,30 @@ export default function AdminPage() {
                 action: 'CREATE_SERVICE_TYPE',
                 target_type: 'service_type',
                 target_id: data?.id,
-                details: { name: newServiceType }
+                details: { name: typeName }
             }]);
 
-            setNewServiceType('');
-            showToast('서비스 유형이 추가되었습니다.', 'success');
+            showToast('\uC11C\uBE44\uC2A4 \uC720\uD615\uC774 \uCD94\uAC00\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
             fetchAdminData();
         } catch (error: any) {
-            showToast(`유형 추가 오류: ${error.message}`, 'error');
+            setServiceTypes(previousTypes);
+            showToast(`\uC720\uD615 \uCD94\uAC00 \uC624\uB958: ${error.message}`, 'error');
         }
     }
 
     async function handleDeleteServiceType(id: string) {
-        if (!confirm('서비스 유형을 삭제하시겠습니까?')) return;
-        try {
-            // 삭제 전에 유형명 가져오기
-            const typeToDelete = serviceTypes.find(t => t.id === id);
+        if (!confirm('\uC11C\uBE44\uC2A4 \uC720\uD615\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
 
+        const previousTypes = [...serviceTypes];
+        const typeToDelete = serviceTypes.find(t => t.id === id);
+
+        // Optimistic Update
+        setServiceTypes(serviceTypes.filter(t => t.id !== id));
+
+        try {
             const { error } = await supabase.from('service_types').delete().eq('id', id);
             if (error) throw error;
 
-            // 활동 로그 기록
             await supabase.from('activity_logs').insert([{
                 user_id: currentUserId,
                 user_email: profiles.find(p => p.id === currentUserId)?.email,
@@ -288,10 +318,144 @@ export default function AdminPage() {
                 details: { name: typeToDelete?.name }
             }]);
 
-            showToast('서비스 유형이 삭제되었습니다.', 'success');
+            showToast('\uC11C\uBE44\uC2A4 \uC720\uD615\uC774 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setServiceTypes(previousTypes);
+            showToast(`\uC720\uD615 \uC0AD\uC81C \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleAddVanCompany(e: React.FormEvent) {
+        e.preventDefault();
+        if (!newVanCompany.trim()) return;
+
+        const tempId = Math.random().toString();
+        const vanName = newVanCompany;
+        const previousVans = [...vanCompanies];
+
+        // Optimistic Update
+        setVanCompanies([...vanCompanies, { id: tempId, name: vanName }]);
+        setNewVanCompany('');
+
+        try {
+            const { data, error } = await supabase.from('van_companies').insert([{
+                name: vanName,
+                sort_order: vanCompanies.length
+            }]).select().single();
+            if (error) throw error;
+
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'CREATE_VAN_COMPANY',
+                target_type: 'van_company',
+                target_id: data?.id,
+                details: { name: vanName }
+            }]);
+
+            showToast('VAN\uC0AC\uAC00 \uCD94\uAC00\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
             fetchAdminData();
         } catch (error: any) {
-            showToast(`유형 삭제 오류: ${error.message}`, 'error');
+            setVanCompanies(previousVans);
+            showToast(`VAN\uC0AC \uCD94\uAC00 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleDeleteVanCompany(id: string) {
+        if (!confirm('VAN\uC0AC\uB97C \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
+
+        const previousVans = [...vanCompanies];
+        const vanToDelete = vanCompanies.find(v => v.id === id);
+
+        // Optimistic Update
+        setVanCompanies(vanCompanies.filter(v => v.id !== id));
+
+        try {
+            const { error } = await supabase.from('van_companies').delete().eq('id', id);
+            if (error) throw error;
+
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'DELETE_VAN_COMPANY',
+                target_type: 'van_company',
+                target_id: id,
+                details: { name: vanToDelete?.name }
+            }]);
+
+            showToast('VAN\uC0AC\uAC00 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setVanCompanies(previousVans);
+            showToast(`VAN\uC0AC \uC0AD\uC81C \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleAddEquipmentType(e: React.FormEvent) {
+        e.preventDefault();
+        if (!newEquipmentType.trim()) return;
+
+        const tempId = Math.random().toString();
+        const equipName = newEquipmentType;
+        const previousEquips = [...equipmentTypes];
+
+        // Optimistic Update
+        setEquipmentTypes([...equipmentTypes, { id: tempId, name: equipName }]);
+        setNewEquipmentType('');
+
+        try {
+            const { data, error } = await supabase.from('equipment_types').insert([{
+                name: equipName,
+                sort_order: equipmentTypes.length
+            }]).select().single();
+            if (error) throw error;
+
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'CREATE_EQUIPMENT_TYPE',
+                target_type: 'equipment_type',
+                target_id: data?.id,
+                details: { name: equipName }
+            }]);
+
+            showToast('\uC7A5\uBE44 \uC720\uD615\uC774 \uCD94\uAC00\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+            fetchAdminData();
+        } catch (error: any) {
+            setEquipmentTypes(previousEquips);
+            showToast(`\uC7A5\uBE44 \uCD94\uAC00 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleDeleteEquipmentType(id: string) {
+        if (!confirm('\uC7A5\uBE44 \uC720\uD615\uC744 \uC0AD\uC81C\uD558\uC2DC\uACA0\uC2B5\uB2C8\uAE4C?')) return;
+
+        const previousEquips = [...equipmentTypes];
+        const equipToDelete = equipmentTypes.find(e => e.id === id);
+
+        // Optimistic Update
+        setEquipmentTypes(equipmentTypes.filter(e => e.id !== id));
+
+        try {
+            const { error } = await supabase.from('equipment_types').delete().eq('id', id);
+            if (error) throw error;
+
+            await supabase.from('activity_logs').insert([{
+                user_id: currentUserId,
+                user_email: profiles.find(p => p.id === currentUserId)?.email,
+                user_display_name: profiles.find(p => p.id === currentUserId)?.display_name,
+                action: 'DELETE_EQUIPMENT_TYPE',
+                target_type: 'equipment_type',
+                target_id: id,
+                details: { name: equipToDelete?.name }
+            }]);
+
+            showToast('\uC7A5\uBE44 \uC720\uD615\uC774 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setEquipmentTypes(previousEquips);
+            showToast(`\uC7A5\uBE44 \uC0AD\uC81C \uC624\uB958: ${error.message}`, 'error');
         }
     }
 
@@ -613,6 +777,48 @@ export default function AdminPage() {
                                     <div key={t.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                                         <span className="text-sm font-medium text-slate-700">{t.name}</span>
                                         <button onClick={() => handleDeleteServiceType(t.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                            <h2 className="text-sm font-bold text-slate-900">VAN사 관리</h2>
+                            <form onSubmit={handleAddVanCompany} className="flex gap-2">
+                                <input
+                                    className="input-field flex-1 text-sm h-10"
+                                    placeholder="새 VAN사명..."
+                                    value={newVanCompany}
+                                    onChange={(e) => setNewVanCompany(e.target.value)}
+                                />
+                                <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
+                            </form>
+                            <div className="space-y-1">
+                                {vanCompanies.map(v => (
+                                    <div key={v.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
+                                        <span className="text-sm font-medium text-slate-700">{v.name}</span>
+                                        <button onClick={() => handleDeleteVanCompany(v.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                            <h2 className="text-sm font-bold text-slate-900">장비 유형 관리</h2>
+                            <form onSubmit={handleAddEquipmentType} className="flex gap-2">
+                                <input
+                                    className="input-field flex-1 text-sm h-10"
+                                    placeholder="새 장비명..."
+                                    value={newEquipmentType}
+                                    onChange={(e) => setNewEquipmentType(e.target.value)}
+                                />
+                                <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
+                            </form>
+                            <div className="space-y-1">
+                                {equipmentTypes.map(e => (
+                                    <div key={e.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
+                                        <span className="text-sm font-medium text-slate-700">{e.name}</span>
+                                        <button onClick={() => handleDeleteEquipmentType(e.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
                                     </div>
                                 ))}
                             </div>

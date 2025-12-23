@@ -20,6 +20,12 @@ import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
 
+const STATUS_MAP = {
+    pending: { label: '대기', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    processing: { label: '처리중', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    completed: { label: '완료', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+};
+
 export default function DashboardPage() {
     const router = useRouter();
     const [stats, setStats] = useState({
@@ -39,7 +45,14 @@ export default function DashboardPage() {
         type: '장애',
         details: ''
     });
+    const [clientSearch, setClientSearch] = useState('');
     const [loading, setLoading] = useState(true);
+    const [viewingRecord, setViewingRecord] = useState<any>(null);
+    const [userRole, setUserRole] = useState<string>('field');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [editingRecord, setEditingRecord] = useState<any>(null);
+    const [completingRecord, setCompletingRecord] = useState<any>(null);
+    const [processingRecord, setProcessingRecord] = useState<any>(null);
     const { showToast } = useToast();
     const supabase = createClient();
 
@@ -59,11 +72,12 @@ export default function DashboardPage() {
             if (user) {
                 const { data: profile } = await supabase
                     .from('profiles')
-                    .select('allowed_groups')
+                    .select('allowed_groups, role')
                     .eq('id', user.id)
                     .single();
 
                 allowedGroups = profile?.allowed_groups || [];
+                setUserRole(profile?.role || 'field');
 
                 // 접근 가능한 그룹이 있으면 해당 거래처 ID 조회
                 if (allowedGroups.length > 0) {
@@ -129,7 +143,7 @@ export default function DashboardPage() {
                 .single();
 
             // 거래처 목록 조회 (접수 등록용, 그룹 필터링 적용)
-            let clientsForModalQuery = supabase.from('clients').select('id, name').order('name');
+            let clientsForModalQuery = supabase.from('clients').select('id, name, biz_reg_no, client_groups(name)').order('name');
             if (allowedGroups.length > 0) {
                 clientsForModalQuery = clientsForModalQuery.in('group_id', allowedGroups);
             }
@@ -159,15 +173,163 @@ export default function DashboardPage() {
 
     async function handleAddRecord(e: React.FormEvent) {
         e.preventDefault();
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         try {
-            const { error } = await supabase.from('service_records').insert([newRecord]);
+            const { data, error } = await supabase.from('service_records').insert([newRecord]).select().single();
             if (error) throw error;
+
+            // 활동 로그 기록
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && data) {
+                const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
+                const clientName = clients.find((c: any) => c.id === newRecord.client_id)?.name || '미지정';
+
+                await supabase.from('activity_logs').insert([{
+                    user_id: user.id,
+                    user_email: profile?.email,
+                    user_display_name: profile?.display_name,
+                    action: 'CREATE_RECORD',
+                    target_type: 'record',
+                    target_id: data.id,
+                    details: {
+                        '유형': newRecord.type,
+                        '거래처': clientName,
+                        '내용': newRecord.details
+                    }
+                }]);
+            }
+
             setIsAddModalOpen(false);
             setNewRecord({ client_id: '', type: '장애', details: '' });
+            setClientSearch('');
             showToast('접수가 등록되었습니다.', 'success');
-            fetchDashboardData(); // Refresh counts and recent records
+            fetchDashboardData();
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    function formatDateTime(dateStr: string | null | undefined) {
+        if (!dateStr) return '-';
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return '-';
+
+        const year = d.getFullYear().toString().slice(2);
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const day = d.getDate().toString().padStart(2, '0');
+        const hours = d.getHours().toString().padStart(2, '0');
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+
+        return `${year}-${month}-${day} ${hours}:${minutes}`;
+    }
+
+    async function handleUpdateRecord(e: React.FormEvent) {
+        e.preventDefault();
+        if (!editingRecord || isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('service_records')
+                .update({
+                    client_id: editingRecord.client_id || null,
+                    type: editingRecord.type,
+                    details: editingRecord.details,
+                    result: editingRecord.result,
+                    status: editingRecord.status,
+                    processed_at: editingRecord.processed_at,
+                    started_at: editingRecord.started_at
+                })
+                .eq('id', editingRecord.id);
+            if (error) throw error;
+            setEditingRecord(null);
+            showToast('내역이 수정되었습니다.', 'success');
+            fetchDashboardData();
+        } catch (error: any) {
+            showToast(`수정 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    async function handleDeleteRecord(id: string) {
+        if (isSubmitting) return;
+        if (!confirm('이 접수 내역을 정말 삭제하시겠습니까?')) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase.from('service_records').delete().eq('id', id);
+            if (error) throw error;
+            showToast('접수 내역이 삭제되었습니다.', 'info');
+            fetchDashboardData();
+            setViewingRecord(null);
+        } catch (error: any) {
+            showToast(`삭제 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    function openCompleteModal(record: any) {
+        const now = new Date();
+        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+            .toISOString().slice(0, 16);
+        setCompletingRecord({ id: record.id, processed_at: localDateTime, result: '' });
+    }
+
+    async function handleCompleteSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!completingRecord || isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('service_records')
+                .update({
+                    processed_at: new Date(completingRecord.processed_at).toISOString(),
+                    result: completingRecord.result,
+                    status: 'completed'
+                })
+                .eq('id', completingRecord.id);
+            if (error) throw error;
+            setCompletingRecord(null);
+            showToast('처리가 완료되었습니다.', 'success');
+            fetchDashboardData();
+        } catch (error: any) {
+            showToast(`완료 처리 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
+
+    function openProcessingModal(record: any) {
+        const now = new Date();
+        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+            .toISOString().slice(0, 16);
+        setProcessingRecord({ id: record.id, started_at: localDateTime, result: '' });
+    }
+
+    async function handleProcessingSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        if (!processingRecord || isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            const { error } = await supabase
+                .from('service_records')
+                .update({
+                    status: 'processing',
+                    started_at: new Date(processingRecord.started_at).toISOString(),
+                    result: processingRecord.result
+                })
+                .eq('id', processingRecord.id);
+            if (error) throw error;
+            setProcessingRecord(null);
+            showToast('처리 중으로 변경되었습니다.', 'success');
+            fetchDashboardData();
+        } catch (error: any) {
+            showToast(`처리 시작 오류: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
         }
     }
 
@@ -249,30 +411,33 @@ export default function DashboardPage() {
                     </div>
                     <div className="divide-y divide-slate-50">
                         {recentRecords.length > 0 ? (
-                            recentRecords.map((record) => (
-                                <div key={record.id} className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between group">
-                                    <div className="flex items-center gap-4 overflow-hidden">
-                                        <div className={`w-2 h-2 rounded-full shrink-0 ${record.processed_at ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-bold text-slate-900 truncate">{record.clients?.name || '알 수 없음'}</p>
-                                            <p className="text-xs text-slate-500 truncate mt-0.5">{record.details || '내용 없음'}</p>
+                            recentRecords.map((record) => {
+                                const statusKey = record.status || (record.processed_at ? 'completed' : 'pending');
+                                const status = STATUS_MAP[statusKey as keyof typeof STATUS_MAP] || STATUS_MAP.pending;
+                                return (
+                                    <div
+                                        key={record.id}
+                                        onClick={() => setViewingRecord(record)}
+                                        className="p-4 hover:bg-slate-50 transition-colors flex items-center justify-between group cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-4 overflow-hidden">
+                                            <div className={`w-2 h-2 rounded-full shrink-0 ${statusKey === 'completed' ? 'bg-emerald-500' : statusKey === 'processing' ? 'bg-amber-500' : 'bg-red-500'}`} />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-bold text-slate-900 truncate">{record.clients?.name || '알 수 없음'}</p>
+                                                <p className="text-xs text-slate-500 truncate mt-0.5">{record.details || '내용 없음'}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 shrink-0">
+                                            <span className="text-xs text-slate-400 font-medium whitespace-nowrap">
+                                                {formatDateTime(record.created_at)}
+                                            </span>
+                                            <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold min-w-[50px] text-center ${status.bg} ${status.color}`}>
+                                                {status.label}
+                                            </span>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-3 shrink-0">
-                                        <span className="text-xs text-slate-400 font-medium whitespace-nowrap">
-                                            {new Date(record.created_at).toLocaleDateString()}
-                                        </span>
-                                        <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold min-w-[50px] text-center ${record.status === 'completed'
-                                            ? 'bg-emerald-50 text-emerald-700'
-                                            : record.status === 'processing'
-                                                ? 'bg-amber-50 text-amber-700'
-                                                : 'bg-red-50 text-red-700'
-                                            }`}>
-                                            {record.status === 'completed' ? '완료' : record.status === 'processing' ? '처리중' : '대기'}
-                                        </span>
-                                    </div>
-                                </div>
-                            ))
+                                );
+                            })
                         ) : (
                             <div className="text-center py-16 text-slate-400 text-sm">
                                 접수된 내역이 없습니다
@@ -325,17 +490,57 @@ export default function DashboardPage() {
                 <form onSubmit={handleAddRecord} className="space-y-4">
                     <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">거래처 선택 *</label>
-                        <select
-                            required
-                            className="input-field w-full text-[14px] font-medium text-slate-800"
-                            value={newRecord.client_id}
-                            onChange={(e) => setNewRecord({ ...newRecord, client_id: e.target.value })}
-                        >
-                            <option value="">거래처를 선택하세요</option>
-                            {clients.map(client => (
-                                <option key={client.id} value={client.id}>{client.name}</option>
-                            ))}
-                        </select>
+                        <input
+                            type="text"
+                            placeholder="거래처 검색..."
+                            className="input-field w-full mb-2 text-sm bg-slate-50"
+                            value={clientSearch}
+                            onChange={e => setClientSearch(e.target.value)}
+                        />
+                        <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[250px] bg-white divide-y divide-slate-100 shadow-inner">
+                            {clients
+                                .filter((c: any) =>
+                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                )
+                                .map((client: any) => {
+                                    const isSelected = newRecord.client_id === client.id;
+                                    return (
+                                        <div
+                                            key={client.id}
+                                            onClick={() => setNewRecord({ ...newRecord, client_id: client.id })}
+                                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
+                                                ? 'bg-blue-50 border-l-4 border-blue-600'
+                                                : 'hover:bg-slate-50'
+                                                }`}
+                                        >
+                                            <div className="flex flex-col">
+                                                <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
+                                                    {client.name}
+                                                </span>
+                                                {client.biz_reg_no && (
+                                                    <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                )}
+                                            </div>
+                                            {client.client_groups?.name && (
+                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                                                    }`}>
+                                                    {client.client_groups.name}
+                                                </span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            {clients.filter((c: any) =>
+                                c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                            ).length === 0 && (
+                                    <div className="p-8 text-center text-sm text-slate-400">
+                                        검색 결과가 없습니다.
+                                    </div>
+                                )}
+                        </div>
+                        <input type="hidden" required value={newRecord.client_id} />
                     </div>
 
                     <div>
@@ -362,17 +567,256 @@ export default function DashboardPage() {
                         <textarea
                             rows={3}
                             placeholder="상세 내용을 입력하세요"
-                            className="input-field w-full text-[14px] font-medium text-slate-800"
+                            className="input-field w-full text-[14px] font-medium text-slate-800 h-auto"
                             value={newRecord.details}
                             onChange={(e) => setNewRecord({ ...newRecord, details: e.target.value })}
                         />
                     </div>
 
                     <div className="pt-2 flex gap-3">
-                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn-outline flex-1">취소</button>
-                        <button type="submit" className="btn-primary flex-1">등록하기</button>
+                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
+                        <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>
+                            {isSubmitting ? '등록 중...' : '등록하기'}
+                        </button>
                     </div>
                 </form>
+            </Modal>
+
+            {/* 접수 상세 정보 모달 */}
+            <Modal isOpen={!!viewingRecord} onClose={() => setViewingRecord(null)} title="접수 상세 정보">
+                {viewingRecord && (
+                    <div className="space-y-6">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1 border-b border-slate-100 pb-2">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">접수일시</label>
+                                    <p className="text-[14px] font-medium text-slate-800">{formatDateTime(viewingRecord.created_at || viewingRecord.reception_at)}</p>
+                                </div>
+                                <div className="space-y-1 border-b border-slate-100 pb-2">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">상태</label>
+                                    <div>
+                                        <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUS_MAP[viewingRecord.status as keyof typeof STATUS_MAP]?.bg || 'bg-slate-100'} ${STATUS_MAP[viewingRecord.status as keyof typeof STATUS_MAP]?.color || 'text-slate-600'}`}>
+                                            {STATUS_MAP[viewingRecord.status as keyof typeof STATUS_MAP]?.label || '대기'}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1 border-b border-slate-100 pb-2">
+                                <label className="text-[11px] font-medium text-slate-800 uppercase">거래처</label>
+                                <p className="text-[14px] font-medium text-slate-800">{viewingRecord.clients?.name || '미지정'}</p>
+                            </div>
+
+                            <div className="space-y-1 border-b border-slate-100 pb-2">
+                                <label className="text-[11px] font-medium text-slate-800 uppercase">유형</label>
+                                <p className="text-[14px] font-medium text-slate-800">{viewingRecord.type}</p>
+                            </div>
+
+                            <div className="space-y-1 border-b border-slate-100 pb-2">
+                                <label className="text-[11px] font-medium text-slate-800 uppercase">상세 내용</label>
+                                <p className="text-[14px] font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">{viewingRecord.details || '내용 없음'}</p>
+                            </div>
+
+                            <div className="space-y-1 border-b border-slate-100 pb-2">
+                                <label className="text-[11px] font-medium text-slate-800 uppercase block mb-1">처리 결과</label>
+                                <p className="text-[14px] font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">{viewingRecord.result || '아직 처리 결과가 없습니다.'}</p>
+                            </div>
+
+                            {(viewingRecord.started_at || viewingRecord.processed_at) && (
+                                <div className="grid grid-cols-2 gap-4 border-b border-slate-100 pb-2">
+                                    {viewingRecord.started_at && (
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-medium text-slate-800 uppercase">처리 시작</label>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{formatDateTime(viewingRecord.started_at)}</p>
+                                        </div>
+                                    )}
+                                    {viewingRecord.processed_at && (
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-medium text-slate-800 uppercase">처리 완료</label>
+                                            <p className="text-[14px] font-medium text-slate-800 font-mono">{formatDateTime(viewingRecord.processed_at)}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="pt-4 space-y-2">
+                            <div className="flex gap-2">
+                                {(userRole === 'operator' || userRole === 'admin' || userRole === 'callcenter') && (viewingRecord.status === 'pending' || !viewingRecord.status) && (
+                                    <button
+                                        onClick={() => {
+                                            openProcessingModal(viewingRecord);
+                                            setViewingRecord(null);
+                                        }}
+                                        className="flex-1 btn-outline border-blue-200 text-blue-600 font-bold py-3 h-auto hover:bg-blue-50 transition-colors"
+                                    >
+                                        1차 처리
+                                    </button>
+                                )}
+                                {(viewingRecord.status !== 'completed' && viewingRecord.status !== '완료') && (
+                                    <button
+                                        onClick={() => {
+                                            openCompleteModal(viewingRecord);
+                                            setViewingRecord(null);
+                                        }}
+                                        className="flex-1 btn-outline border-emerald-200 text-emerald-600 font-bold py-3 h-auto hover:bg-emerald-50 transition-colors"
+                                    >
+                                        완료
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex gap-2">
+                                {(userRole === 'operator' || userRole === 'admin') && (
+                                    <>
+                                        <button
+                                            onClick={() => {
+                                                setEditingRecord({ ...viewingRecord, client_id: viewingRecord.client_id || '' });
+                                                setViewingRecord(null);
+                                            }}
+                                            className="flex-1 btn-outline font-bold py-3 h-auto"
+                                        >
+                                            접수 수정
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeleteRecord(viewingRecord.id)}
+                                            className="flex-1 btn-outline border-red-200 text-red-600 font-bold py-3 h-auto hover:bg-red-50 transition-colors"
+                                        >
+                                            삭제
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                            <button onClick={() => setViewingRecord(null)} className="w-full btn-primary font-bold py-3 h-auto">닫기</button>
+                        </div>
+                    </div>
+                )}
+            </Modal>
+
+            {/* 수정 모달 */}
+            <Modal isOpen={!!editingRecord} onClose={() => setEditingRecord(null)} title="접수 수정">
+                {editingRecord && (
+                    <form onSubmit={handleUpdateRecord} className="space-y-4">
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">거래처</label>
+                            <select
+                                className="input-field w-full"
+                                value={editingRecord.client_id || ''}
+                                onChange={e => setEditingRecord({ ...editingRecord, client_id: e.target.value })}
+                            >
+                                <option value="">선택 안함</option>
+                                {clients.map((client: any) => (
+                                    <option key={client.id} value={client.id}>
+                                        {client.name}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">유형</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {(serviceTypes.length > 0 ? serviceTypes.map(t => t.name) : ['장애', '서비스', '기타']).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => setEditingRecord({ ...editingRecord, type: t })}
+                                        className={`py-2 rounded text-sm font-medium border-2 ${editingRecord.type === t
+                                            ? 'bg-blue-50 text-blue-600 border-blue-600 font-bold'
+                                            : 'bg-white border-gray-200 text-gray-700 hover:border-blue-300'
+                                            }`}
+                                    >
+                                        {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">상세 내용</label>
+                            <textarea
+                                rows={4}
+                                className="input-field w-full resize-none h-auto"
+                                value={editingRecord.details || ''}
+                                onChange={e => setEditingRecord({ ...editingRecord, details: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">처리결과</label>
+                            <textarea
+                                rows={2}
+                                className="input-field w-full resize-none h-auto"
+                                value={editingRecord.result || ''}
+                                onChange={e => setEditingRecord({ ...editingRecord, result: e.target.value })}
+                            />
+                        </div>
+                        <div className="pt-2 flex gap-2">
+                            <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1">취소</button>
+                            <button type="submit" className="btn-primary flex-1">수정</button>
+                        </div>
+                    </form>
+                )}
+            </Modal>
+
+            {/* 완료 처리 모달 */}
+            <Modal isOpen={!!completingRecord} onClose={() => setCompletingRecord(null)} title="완료 처리">
+                {completingRecord && (
+                    <form onSubmit={handleCompleteSubmit} className="space-y-4">
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">처리일시</label>
+                            <input
+                                type="datetime-local"
+                                className="input-field w-full"
+                                value={completingRecord.processed_at}
+                                onChange={e => setCompletingRecord({ ...completingRecord, processed_at: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">처리결과</label>
+                            <textarea
+                                rows={3}
+                                className="input-field w-full resize-none h-auto"
+                                placeholder="처리 내용을 입력하세요..."
+                                value={completingRecord.result}
+                                onChange={e => setCompletingRecord({ ...completingRecord, result: e.target.value })}
+                            />
+                        </div>
+                        <div className="pt-2 flex gap-2">
+                            <button type="button" onClick={() => setCompletingRecord(null)} className="btn-outline flex-1">취소</button>
+                            <button type="submit" className="btn-primary flex-1">완료</button>
+                        </div>
+                    </form>
+                )}
+            </Modal>
+
+            {/* 1차 처리 모달 */}
+            <Modal isOpen={!!processingRecord} onClose={() => setProcessingRecord(null)} title="1차 처리">
+                {processingRecord && (
+                    <form onSubmit={handleProcessingSubmit} className="space-y-4">
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">처리일시</label>
+                            <input
+                                type="datetime-local"
+                                className="input-field w-full"
+                                value={processingRecord.started_at}
+                                onChange={e => setProcessingRecord({ ...processingRecord, started_at: e.target.value })}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">처리 내용</label>
+                            <textarea
+                                rows={3}
+                                required
+                                className="input-field w-full resize-none h-auto"
+                                placeholder="1차 처리 내용을 입력하세요..."
+                                value={processingRecord.result}
+                                onChange={e => setProcessingRecord({ ...processingRecord, result: e.target.value })}
+                            />
+                        </div>
+                        <div className="pt-2 flex gap-2">
+                            <button type="button" onClick={() => setProcessingRecord(null)} className="btn-outline flex-1">취소</button>
+                            <button type="submit" className="btn-primary flex-1">저장</button>
+                        </div>
+                    </form>
+                )}
             </Modal>
         </div>
     );
