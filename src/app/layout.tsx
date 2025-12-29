@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 import { ToastProvider } from "@/components/Toast";
 
 export const metadata: Metadata = {
-  title: "제이이 네트웍스 - 서비스 관리 시스템",
-  description: "현장 서비스 및 거래처 관리 솔루션",
+  title: "JE Networks - \uc11c\ube44\uc2a4 \uad00\ub9ac \uc2dc\uc2a4\ud15c",
+  description: "\ud604\uc7a5 \uc11c\ube44\uc2a4 \ubc0f \uac70\ub798\ucc98 \uad00\ub9ac \uc194\ub8e8\uc158",
 };
 
 export default function RootLayout({
@@ -27,6 +27,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
+      <head>
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon/favicon-16x16.png" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

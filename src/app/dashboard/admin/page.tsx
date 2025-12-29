@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +14,8 @@ import {
     AlertCircle,
     Plus,
     Trash2,
+    ArrowUp,
+    ArrowDown,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -325,6 +327,67 @@ export default function AdminPage() {
         }
     }
 
+    // Reorder handlers
+    async function handleReorderServiceType(id: string, direction: 'up' | 'down') {
+        const idx = serviceTypes.findIndex(t => t.id === id);
+        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === serviceTypes.length - 1)) return;
+
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        const newOrder = [...serviceTypes];
+        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+        setServiceTypes(newOrder);
+
+        try {
+            await Promise.all([
+                supabase.from('service_types').update({ sort_order: idx }).eq('id', newOrder[idx].id),
+                supabase.from('service_types').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
+            ]);
+        } catch (error) {
+            console.error('Reorder error:', error);
+            fetchAdminData();
+        }
+    }
+
+    async function handleReorderVanCompany(id: string, direction: 'up' | 'down') {
+        const idx = vanCompanies.findIndex(v => v.id === id);
+        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === vanCompanies.length - 1)) return;
+
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        const newOrder = [...vanCompanies];
+        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+        setVanCompanies(newOrder);
+
+        try {
+            await Promise.all([
+                supabase.from('van_companies').update({ sort_order: idx }).eq('id', newOrder[idx].id),
+                supabase.from('van_companies').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
+            ]);
+        } catch (error) {
+            console.error('Reorder error:', error);
+            fetchAdminData();
+        }
+    }
+
+    async function handleReorderEquipmentType(id: string, direction: 'up' | 'down') {
+        const idx = equipmentTypes.findIndex(e => e.id === id);
+        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === equipmentTypes.length - 1)) return;
+
+        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+        const newOrder = [...equipmentTypes];
+        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+        setEquipmentTypes(newOrder);
+
+        try {
+            await Promise.all([
+                supabase.from('equipment_types').update({ sort_order: idx }).eq('id', newOrder[idx].id),
+                supabase.from('equipment_types').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
+            ]);
+        } catch (error) {
+            console.error('Reorder error:', error);
+            fetchAdminData();
+        }
+    }
+
     async function handleAddVanCompany(e: React.FormEvent) {
         e.preventDefault();
         if (!newVanCompany.trim()) return;
@@ -545,7 +608,7 @@ export default function AdminPage() {
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">시스템 관리</h1>
+                    <h1 className="text-2xl font-bold text-slate-900">관리자 설정</h1>
                     <p className="text-sm text-slate-500 mt-1">사용자 권한 및 전체 설정을 관리합니다.</p>
                 </div>
 
@@ -773,10 +836,14 @@ export default function AdminPage() {
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
                             <div className="space-y-1">
-                                {serviceTypes.map(t => (
+                                {serviceTypes.map((t, idx) => (
                                     <div key={t.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                                         <span className="text-sm font-medium text-slate-700">{t.name}</span>
-                                        <button onClick={() => handleDeleteServiceType(t.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => handleReorderServiceType(t.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleReorderServiceType(t.id, 'down')} disabled={idx === serviceTypes.length - 1} className={`p-1 rounded transition-colors ${idx === serviceTypes.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleDeleteServiceType(t.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -794,10 +861,14 @@ export default function AdminPage() {
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
                             <div className="space-y-1">
-                                {vanCompanies.map(v => (
+                                {vanCompanies.map((v, idx) => (
                                     <div key={v.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                                         <span className="text-sm font-medium text-slate-700">{v.name}</span>
-                                        <button onClick={() => handleDeleteVanCompany(v.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => handleReorderVanCompany(v.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleReorderVanCompany(v.id, 'down')} disabled={idx === vanCompanies.length - 1} className={`p-1 rounded transition-colors ${idx === vanCompanies.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleDeleteVanCompany(v.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -815,10 +886,14 @@ export default function AdminPage() {
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
                             <div className="space-y-1">
-                                {equipmentTypes.map(e => (
+                                {equipmentTypes.map((e, idx) => (
                                     <div key={e.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
                                         <span className="text-sm font-medium text-slate-700">{e.name}</span>
-                                        <button onClick={() => handleDeleteEquipmentType(e.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => handleReorderEquipmentType(e.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleReorderEquipmentType(e.id, 'down')} disabled={idx === equipmentTypes.length - 1} className={`p-1 rounded transition-colors ${idx === equipmentTypes.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handleDeleteEquipmentType(e.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                                        </div>
                                     </div>
                                 ))}
                             </div>

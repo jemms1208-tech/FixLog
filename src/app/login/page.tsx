@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Lock, Mail, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 import { createClient } from '@/lib/supabase';
 
@@ -40,7 +40,7 @@ export default function LoginPage() {
                 .from('profiles')
                 .select('*')
                 .eq('id', authData.user.id)
-                .maybeSingle(); // Use maybeSingle to avoid error on 0 rows
+                .maybeSingle();
 
             if (profileError) {
                 console.error('Profile fetch error stringified:', JSON.stringify(profileError, null, 2));
@@ -61,7 +61,6 @@ export default function LoginPage() {
 
             console.log('Fetched profile:', profile);
 
-            // If user is admin, they are always allowed (failsafe), or strictly check is_approved
             if (!profile.is_approved) {
                 await supabase.auth.signOut();
                 alert('계정이 아직 승인되지 않았습니다. 관리자의 승인을 기다려주세요.');
@@ -88,10 +87,9 @@ export default function LoginPage() {
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
             <div className="w-full max-w-[400px] bg-white rounded-xl shadow-lg border border-slate-100 p-8 space-y-6">
                 <div className="text-center space-y-2">
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-blue-50 text-blue-600 mb-2">
-                        <Lock className="w-6 h-6" />
+                    <div className="inline-flex items-center justify-center w-20 h-20 rounded-xl bg-white mb-2 overflow-hidden">
+                        <img src="/favicon/logo.png" alt="JE Networks" className="w-16 h-16 object-contain" />
                     </div>
-                    <h1 className="text-2xl font-bold text-slate-900">로그인</h1>
                     <p className="text-sm text-slate-500">서비스 이용을 위해 로그인해주세요.</p>
                 </div>
 
@@ -134,13 +132,13 @@ export default function LoginPage() {
 
                 <div className="text-center pt-2 space-y-2">
                     <p className="text-sm text-slate-500">
-                        계정이 없으신가요? {' '}
+                        계정이 없으신가요?{' '}
                         <Link href="/signup" className="text-blue-600 font-bold hover:underline underline-offset-4">
                             회원가입
                         </Link>
                     </p>
                     <p className="text-xs text-slate-400">
-                        비밀번호를 잊으셨나요? {' '}
+                        비밀번호를 잊으셨나요?{' '}
                         <Link href="/forgot-password" className="text-slate-500 font-medium hover:underline underline-offset-4">
                             비밀번호 초기화 안내
                         </Link>

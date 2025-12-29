@@ -1,7 +1,8 @@
-'use client';
+﻿'use client';
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check, Calendar } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
@@ -14,8 +15,9 @@ const STATUS_MAP = {
     completed: { label: '완료', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
 };
 
-export default function RecordsPage() {
+function RecordsPageContent() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchColumn, setSearchColumn] = useState('all');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [records, setRecords] = useState<any[]>([]);
     const [clientList, setClientList] = useState<any[]>([]);
@@ -24,13 +26,15 @@ export default function RecordsPage() {
     const [newRecord, setNewRecord] = useState({
         client_id: '',
         type: '장애',
-        details: ''
+        details: '',
+        receiver_id: ''
     });
     const [editingRecord, setEditingRecord] = useState<any>(null);
     const [completingRecord, setCompletingRecord] = useState<any>(null);
     const [processingRecord, setProcessingRecord] = useState<any>(null);
     const [viewingRecord, setViewingRecord] = useState<any>(null);
     const [serviceTypes, setServiceTypes] = useState<any[]>([]);
+    const [staffList, setStaffList] = useState<any[]>([]);
     const [userRole, setUserRole] = useState<string>('field');
 
     // 페이지네이션 상태
@@ -48,6 +52,9 @@ export default function RecordsPage() {
     const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [clientSearch, setClientSearch] = useState('');
+    const searchParams = useSearchParams();
+    const urlStatus = searchParams.get('status');
+    const [statusFilter, setStatusFilter] = useState<string>(urlStatus || 'all');
 
     useEffect(() => {
         if (isModalOpen || editingRecord) {
@@ -71,6 +78,7 @@ export default function RecordsPage() {
         fetchUserRole();
         fetchClients();
         fetchServiceTypes();
+        fetchStaff();
     }, []);
 
     // allowedGroups 로드 완료 후에만 데이터 가져오기
@@ -78,7 +86,7 @@ export default function RecordsPage() {
         if (allowedGroupsLoaded) {
             fetchRecords();
         }
-    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded, receptionDateRange, processedDateRange]);
+    }, [debouncedSearch, searchColumn, currentPage, allowedGroups, allowedGroupsLoaded, receptionDateRange, processedDateRange, statusFilter]);
 
 
     async function fetchUserRole() {
@@ -96,6 +104,30 @@ export default function RecordsPage() {
     async function fetchServiceTypes() {
         const { data } = await supabase.from('service_types').select('*').order('sort_order');
         if (data) setServiceTypes(data);
+    }
+
+    async function fetchStaff() {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: currentProfile } = await supabase.from('profiles').select('allowed_groups').eq('id', user.id).single();
+
+                let query = supabase.from('profiles').select('id, display_name, email, allowed_groups').eq('is_approved', true);
+                const { data } = await query;
+
+                if (data) {
+                    const filteredStaff = (currentProfile?.allowed_groups && currentProfile.allowed_groups.length > 0)
+                        ? data.filter((staff: any) =>
+                            (staff.allowed_groups && Array.isArray(staff.allowed_groups) && staff.allowed_groups.some((g: string) => currentProfile.allowed_groups.includes(g))) ||
+                            (!staff.allowed_groups || staff.allowed_groups.length === 0)
+                        )
+                        : data;
+                    setStaffList(filteredStaff);
+                }
+            }
+        } catch (err) {
+            console.error('fetchStaff error:', err);
+        }
     }
 
     async function fetchClients() {
@@ -155,7 +187,7 @@ export default function RecordsPage() {
             // 기본 쿼리 빌더
             let query = supabase
                 .from('service_records')
-                .select(`*, clients (name, group_id, client_groups (name))`, { count: 'exact' });
+                .select('*, clients(name), receiver:profiles!receiver_id(display_name), first_handler:profiles!first_handler_id(display_name), handler:profiles!handler_id(display_name)', { count: 'exact' });
 
             // 접근 그룹 필터링 (해당 그룹의 거래처 내역만 조회)
             if (allowedClientIds !== null) {
@@ -170,11 +202,13 @@ export default function RecordsPage() {
             }
 
             // 키:값 검색 파싱
-            const { filters, generalSearch } = parseSearchQuery(debouncedSearch);
+            const { filters, generalSearch: parsedGeneralSearch } = parseSearchQuery(debouncedSearch);
+            let generalSearch = parsedGeneralSearch;
 
             // 거래처 이름 또는 그룹명으로 검색 시 먼저 client_id 조회
-            if (filters['거래처']) {
-                const term = filters['거래처'];
+            if (filters['거래처'] || (searchColumn === 'client' && generalSearch.trim())) {
+                const term = filters['거래처'] || generalSearch;
+                if (searchColumn === 'client') generalSearch = ''; // 거래처 검색으로 사용했으므로 비움
 
                 // 1. 상호명 검색
                 const { data: nameMatches } = await supabase
@@ -254,12 +288,28 @@ export default function RecordsPage() {
                 query = query.eq('status', statusValue);
             }
 
-            // 일반 검색어가 있으면 전체 필드에서 검색
-            if (generalSearch.trim()) {
+            // 컬럼 선택 검색 또는 일반 검색
+            if (searchColumn !== 'all' && generalSearch.trim()) {
                 const search = generalSearch;
-                // reception_at::text, processed_at::text 등 날짜 필드도 텍스트 검색에 포함시킬 수 있지만 복잡할 수 있음.
-                // 여기서는 주요 텍스트 필드만 검색
+                if (searchColumn === 'client') {
+                    // 거래처 검색은 상단에서 이미 특별 처리하므로 generalSearch를 해당 로직에 태워야 함
+                    // 하지만 이미 filters['거래처']가 있으면 중복될 수 있음. 
+                    // 여기서는 searchColumn이 'client'이면 generalSearch를 거래처 검색으로 취급
+                } else if (searchColumn === 'type') {
+                    query = query.ilike('type', `%${search}%`);
+                } else if (searchColumn === 'details') {
+                    query = query.ilike('details', `%${search}%`);
+                } else if (searchColumn === 'result') {
+                    query = query.ilike('result', `%${search}%`);
+                }
+            } else if (generalSearch.trim()) {
+                const search = generalSearch;
                 query = query.or(`details.ilike.%${search}%,type.ilike.%${search}%,result.ilike.%${search}%`);
+            }
+
+            // 상태 필터 드롭다운 적용
+            if (statusFilter && statusFilter !== 'all') {
+                query = query.eq('status', statusFilter);
             }
 
             // 날짜 범위 필터 (UTC ISO 변환으로 정확한 시간 비교)
@@ -320,9 +370,11 @@ export default function RecordsPage() {
         if (isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const recordData = {
                 ...newRecord,
-                client_id: newRecord.client_id || null
+                client_id: newRecord.client_id || null,
+                receiver_id: newRecord.receiver_id || user?.id // 선택된 접수자 또는 현재 사용자
             };
             const { data, error } = await supabase.from('service_records').insert([recordData]).select().single();
             if (error) {
@@ -331,7 +383,6 @@ export default function RecordsPage() {
             }
 
             // 활동 로그 기록
-            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
                 const clientName = clientList.find((c: any) => c.id === newRecord.client_id)?.name || '미지정';
@@ -353,7 +404,7 @@ export default function RecordsPage() {
 
             setIsModalOpen(false);
             fetchRecords();
-            setNewRecord({ client_id: '', type: '장애', details: '' });
+            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '' });
             showToast('접수가 등록되었습니다.', 'success');
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
@@ -367,6 +418,7 @@ export default function RecordsPage() {
         if (!editingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
@@ -376,13 +428,15 @@ export default function RecordsPage() {
                     result: editingRecord.result,
                     status: editingRecord.status,
                     processed_at: editingRecord.processed_at,
-                    started_at: editingRecord.started_at
+                    started_at: editingRecord.started_at,
+                    receiver_id: editingRecord.receiver_id || null,
+                    first_handler_id: editingRecord.first_handler_id || null,
+                    handler_id: editingRecord.handler_id || null
                 })
                 .eq('id', editingRecord.id);
             if (error) throw error;
 
             // 활동 로그 기록
-            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
                 await supabase.from('activity_logs').insert([{
@@ -412,6 +466,7 @@ export default function RecordsPage() {
 
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             // 삭제 전에 내역 정보 가져오기
             const recordToDelete = records.find(r => r.id === id);
 
@@ -419,7 +474,6 @@ export default function RecordsPage() {
             if (error) throw error;
 
             // 활동 로그 기록
-            const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
                 await supabase.from('activity_logs').insert([{
@@ -450,7 +504,8 @@ export default function RecordsPage() {
         setCompletingRecord({
             id: record.id,
             processed_at: localDateTime,
-            result: ''
+            result: '',
+            first_handler_id: record.first_handler_id || ''
         });
     }
 
@@ -459,12 +514,14 @@ export default function RecordsPage() {
         if (!completingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
                     processed_at: new Date(completingRecord.processed_at).toISOString(),
                     result: completingRecord.result,
-                    status: 'completed'
+                    status: 'completed',
+                    handler_id: completingRecord.handler_id || user?.id // 선택된 담당자 또는 현재 사용자
                 })
                 .eq('id', completingRecord.id);
             if (error) throw error;
@@ -485,7 +542,8 @@ export default function RecordsPage() {
         setProcessingRecord({
             id: record.id,
             started_at: localDateTime,
-            result: ''
+            result: '',
+            first_handler_id: record.first_handler_id || ''
         });
     }
 
@@ -494,12 +552,14 @@ export default function RecordsPage() {
         if (!processingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
                     status: 'processing',
                     started_at: new Date(processingRecord.started_at).toISOString(),
-                    result: processingRecord.result
+                    result: processingRecord.result,
+                    first_handler_id: processingRecord.first_handler_id || user?.id
                 })
                 .eq('id', processingRecord.id);
             if (error) throw error;
@@ -515,9 +575,10 @@ export default function RecordsPage() {
 
     async function handleStartProcessing(recordId: string) {
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
-                .update({ status: 'processing' })
+                .update({ status: 'processing', handler_id: user?.id })
                 .eq('id', recordId);
             if (error) throw error;
             showToast('처리 중으로 변경되었습니다.', 'success');
@@ -598,17 +659,38 @@ export default function RecordsPage() {
 
             <div className="flex flex-col gap-2">
                 <div className="flex gap-2 relative">
+                    <select
+                        value={searchColumn}
+                        onChange={e => { setSearchColumn(e.target.value); setCurrentPage(1); }}
+                        className="btn-outline px-3 text-sm font-medium min-w-[120px]"
+                    >
+                        <option value="all">전체</option>
+                        <option value="client">거래처</option>
+                        <option value="type">유형</option>
+                        <option value="details">상세내용</option>
+                        <option value="result">처리결과</option>
+                    </select>
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                         <input
                             type="text"
-                            placeholder="검색어 입력 또는 거래처:제이이, 유형:장애, 상태:대기"
+                            placeholder="검색어를 입력하세요"
                             className="input-field w-full"
                             style={{ paddingLeft: '2.5rem' }}
                             value={searchTerm}
                             onChange={e => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    <select
+                        value={statusFilter}
+                        onChange={e => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+                        className="btn-outline px-3 text-sm font-medium min-w-[90px]"
+                    >
+                        <option value="all">전체</option>
+                        <option value="pending">대기</option>
+                        <option value="processing">처리중</option>
+                        <option value="completed">완료</option>
+                    </select>
                     <button
                         onClick={() => setShowDateFilter(!showDateFilter)}
                         className={`btn-outline px-3 transition-colors ${showDateFilter ? 'bg-slate-100 border-slate-300' : ''}`}
@@ -660,13 +742,16 @@ export default function RecordsPage() {
             ) : (
                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
                     {/* PC 전용 헤더 (lg 이상) */}
-                    <div className="hidden lg:grid grid-cols-16 gap-2 p-4 bg-slate-50 border-b text-[11px] font-medium text-slate-800 uppercase">
+                    <div className="hidden lg:grid grid-cols-[repeat(18,minmax(0,1fr))] gap-2 p-4 bg-slate-50 border-b text-[11px] font-medium text-slate-800 uppercase">
                         <div className="col-span-2">접수일시</div>
                         <div className="col-span-2">거래처</div>
                         <div className="col-span-1">유형</div>
-                        <div className="col-span-4">내용</div>
+                        <div className="col-span-3">내용</div>
                         <div className="col-span-3">처리결과</div>
                         <div className="col-span-2">처리일시</div>
+                        <div className="col-span-1">접수자</div>
+                        <div className="col-span-1">1차</div>
+                        <div className="col-span-1">완료</div>
                         <div className="col-span-2 text-center">상태</div>
                     </div>
 
@@ -681,7 +766,7 @@ export default function RecordsPage() {
                                     {/* PC 레이아웃 (lg 이상) */}
                                     <div
                                         onClick={() => setViewingRecord(record)}
-                                        className="hidden lg:grid grid-cols-16 gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center cursor-pointer"
+                                        className="hidden lg:grid grid-cols-[repeat(18,minmax(0,1fr))] gap-2 p-4 hover:bg-slate-50 transition-colors text-[14px] font-medium items-center cursor-pointer"
                                     >
                                         <div className="col-span-2 text-slate-800 text-nowrap">
                                             {formatDateTime(record.reception_at)}
@@ -690,13 +775,16 @@ export default function RecordsPage() {
                                             {formatClientName(record.clients)}
                                         </div>
                                         <div className="col-span-1 text-slate-800">{record.type}</div>
-                                        <div className="col-span-4 text-slate-800 truncate">{record.details || '-'}</div>
+                                        <div className="col-span-3 text-slate-800 truncate">{record.details || '-'}</div>
                                         <div className="col-span-3 text-slate-800 truncate">{record.result || '-'}</div>
                                         <div className="col-span-2 text-slate-800 text-nowrap">
                                             {record.processed_at
                                                 ? formatDateTime(record.processed_at)
                                                 : (record.started_at ? formatDateTime(record.started_at) : '-')}
                                         </div>
+                                        <div className="col-span-1 text-slate-600 text-[12px] truncate" title={record.receiver?.display_name}>{record.receiver?.display_name || '-'}</div>
+                                        <div className="col-span-1 text-slate-600 text-[12px] truncate" title={record.first_handler?.display_name}>{record.first_handler?.display_name || '-'}</div>
+                                        <div className="col-span-1 text-slate-600 text-[12px] truncate" title={record.handler?.display_name}>{record.handler?.display_name || '-'}</div>
                                         <div className="col-span-2 flex justify-center">
                                             <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full uppercase whitespace-nowrap ${status.bg} ${status.color}`}>
                                                 <status.icon className="w-3 h-3" />
@@ -802,11 +890,13 @@ export default function RecordsPage() {
                             value={clientSearch}
                             onChange={e => setClientSearch(e.target.value)}
                         />
-                        <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
+                        {clientSearch.trim() && (<div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
                             {clientList
                                 .filter((c: any) =>
                                     c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                    c.phone?.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                    c.contact_phone?.toLowerCase().includes(clientSearch.toLowerCase())
                                 )
                                 .map((client: any) => {
                                     const isSelected = newRecord.client_id === client.id;
@@ -845,6 +935,7 @@ export default function RecordsPage() {
                                     </div>
                                 )}
                         </div>
+                        )}
                         <input type="hidden" required value={newRecord.client_id} />
                     </div>
 
@@ -867,13 +958,27 @@ export default function RecordsPage() {
                         </div>
                     </div>
 
-                    <div className="space-y-8">
-                        <label className="text-sm font-medium block mb-4">상세 내용 *</label>
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium block mb-1">접수자</label>
+                        <select
+                            className="input-field w-full text-sm"
+                            value={newRecord.receiver_id}
+                            onChange={e => setNewRecord({ ...newRecord, receiver_id: e.target.value })}
+                        >
+                            <option value="">현재 사용자 (자동)</option>
+                            {staffList.map(s => (
+                                <option key={s.id} value={s.id}>{s.display_name}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium block mb-1">상세 내용 *</label>
                         <textarea
                             required
                             rows={3}
                             placeholder="발생한 장애 내용이나 요청 사항을 입력하세요..."
-                            className="input-field resize-none"
+                            className="input-field resize-none h-auto min-h-[100px]"
                             value={newRecord.details}
                             onChange={e => setNewRecord({ ...newRecord, details: e.target.value })}
                         />
@@ -899,7 +1004,7 @@ export default function RecordsPage() {
                                 value={clientSearch}
                                 onChange={e => setClientSearch(e.target.value)}
                             />
-                            <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
+                            {clientSearch.trim() && (<div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
                                 {clientList
                                     .filter((c: any) =>
                                         c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
@@ -934,7 +1039,9 @@ export default function RecordsPage() {
                                         );
                                     })}
                             </div>
-                        </div>        <div>
+                            )}
+                        </div>
+                        <div>
                             <label className="text-sm font-medium block mb-1">유형</label>
                             <div className="grid grid-cols-3 gap-2">
                                 {(serviceTypes.length > 0 ? serviceTypes.map(t => t.name) : ['장애', '서비스', '기타']).map((t) => (
@@ -998,6 +1105,47 @@ export default function RecordsPage() {
                                 ))}
                             </div>
                         </div>
+                        <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+                            <div>
+                                <label className="text-sm font-medium block mb-1">접수자</label>
+                                <select
+                                    className="input-field w-full text-sm"
+                                    value={editingRecord.receiver_id || ''}
+                                    onChange={e => setEditingRecord({ ...editingRecord, receiver_id: e.target.value })}
+                                >
+                                    <option value="">미지정</option>
+                                    {staffList.map(s => (
+                                        <option key={s.id} value={s.id}>{s.display_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium block mb-1">1차 처리자</label>
+                                <select
+                                    className="input-field w-full text-sm"
+                                    value={editingRecord.first_handler_id || ''}
+                                    onChange={e => setEditingRecord({ ...editingRecord, first_handler_id: e.target.value })}
+                                >
+                                    <option value="">미지정</option>
+                                    {staffList.map(s => (
+                                        <option key={s.id} value={s.id}>{s.display_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium block mb-1">완료 담당자</label>
+                                <select
+                                    className="input-field w-full text-sm"
+                                    value={editingRecord.handler_id || ''}
+                                    onChange={e => setEditingRecord({ ...editingRecord, handler_id: e.target.value })}
+                                >
+                                    <option value="">미지정</option>
+                                    {staffList.map(s => (
+                                        <option key={s.id} value={s.id}>{s.display_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
                             <button type="submit" className="btn-primary flex-1" disabled={isSubmitting}>{isSubmitting ? '수정 중...' : '수정'}</button>
@@ -1028,6 +1176,19 @@ export default function RecordsPage() {
                                 value={completingRecord.result}
                                 onChange={e => setCompletingRecord({ ...completingRecord, result: e.target.value })}
                             />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium block mb-1">완료 담당자</label>
+                            <select
+                                className="input-field w-full text-sm"
+                                value={completingRecord.handler_id || ''}
+                                onChange={e => setCompletingRecord({ ...completingRecord, handler_id: e.target.value })}
+                            >
+                                <option value="">현재 사용자 (자동)</option>
+                                {staffList.map(s => (
+                                    <option key={s.id} value={s.id}>{s.display_name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setCompletingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
@@ -1060,6 +1221,19 @@ export default function RecordsPage() {
                                 value={processingRecord.result}
                                 onChange={e => setProcessingRecord({ ...processingRecord, result: e.target.value })}
                             />
+                        </div>
+                        <div>
+                            <label className="text-sm font-medium block mb-1">1차 처리자</label>
+                            <select
+                                className="input-field w-full text-sm"
+                                value={processingRecord.first_handler_id || ''}
+                                onChange={e => setProcessingRecord({ ...processingRecord, first_handler_id: e.target.value })}
+                            >
+                                <option value="">현재 사용자 (자동)</option>
+                                {staffList.map(s => (
+                                    <option key={s.id} value={s.id}>{s.display_name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setProcessingRecord(null)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>
@@ -1107,6 +1281,22 @@ export default function RecordsPage() {
                             <div className="space-y-1 border-b border-slate-100 pb-2">
                                 <label className="text-[11px] font-medium text-slate-800 uppercase block mb-1">처리 결과</label>
                                 <p className="text-[14px] font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">{viewingRecord.result || '아직 처리 결과가 없습니다.'}</p>
+                            </div>
+
+                            {/* 접수자/담당자 정보 */}
+                            <div className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-2">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">접수자</label>
+                                    <p className="text-[14px] font-medium text-slate-800">{viewingRecord.receiver?.display_name || '-'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">1차 처리자</label>
+                                    <p className="text-[14px] font-medium text-slate-800">{viewingRecord.first_handler?.display_name || '-'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">완료 담당자</label>
+                                    <p className="text-[14px] font-medium text-slate-800">{viewingRecord.handler?.display_name || '-'}</p>
+                                </div>
                             </div>
 
                             {(viewingRecord.started_at || viewingRecord.processed_at) && (
@@ -1181,5 +1371,21 @@ export default function RecordsPage() {
                 )}
             </Modal>
         </div>
+    );
+}
+
+
+
+
+
+export default function RecordsPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex h-screen items-center justify-center">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+            </div>
+        }>
+            <RecordsPageContent />
+        </Suspense>
     );
 }

@@ -43,12 +43,14 @@ export default function DashboardPage() {
     const [newRecord, setNewRecord] = useState({
         client_id: '',
         type: '장애',
-        details: ''
+        details: '',
+        receiver_id: ''
     });
     const [clientSearch, setClientSearch] = useState('');
     const [loading, setLoading] = useState(true);
     const [viewingRecord, setViewingRecord] = useState<any>(null);
     const [userRole, setUserRole] = useState<string>('field');
+    const [staffList, setStaffList] = useState<any[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [editingRecord, setEditingRecord] = useState<any>(null);
     const [completingRecord, setCompletingRecord] = useState<any>(null);
@@ -58,7 +60,30 @@ export default function DashboardPage() {
 
     useEffect(() => {
         fetchDashboardData();
+        fetchStaff();
     }, []);
+
+    async function fetchStaff() {
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data: currentProfile } = await supabase.from('profiles').select('allowed_groups').eq('id', user.id).single();
+                let query = supabase.from('profiles').select('id, display_name, email, allowed_groups').eq('is_approved', true);
+                const { data } = await query;
+                if (data) {
+                    const filteredStaff = (currentProfile?.allowed_groups && currentProfile.allowed_groups.length > 0)
+                        ? data.filter((staff: any) =>
+                            (staff.allowed_groups && Array.isArray(staff.allowed_groups) && staff.allowed_groups.some((g: string) => currentProfile.allowed_groups.includes(g))) ||
+                            (!staff.allowed_groups || staff.allowed_groups.length === 0)
+                        )
+                        : data;
+                    setStaffList(filteredStaff);
+                }
+            }
+        } catch (err) {
+            console.error('fetchStaff error:', err);
+        }
+    }
 
     async function fetchDashboardData() {
         try {
@@ -124,7 +149,7 @@ export default function DashboardPage() {
             // 최근 접수 내역 조회 (그룹 필터링 적용)
             let recordsQuery = supabase
                 .from('service_records')
-                .select('*, clients(name)')
+                .select('*, clients(name), receiver:profiles!receiver_id(display_name), first_handler:profiles!first_handler_id(display_name), handler:profiles!handler_id(display_name)')
                 .order('created_at', { ascending: false })
                 .limit(5);
 
@@ -176,11 +201,12 @@ export default function DashboardPage() {
         if (isSubmitting) return;
         setIsSubmitting(true);
         try {
-            const { data, error } = await supabase.from('service_records').insert([newRecord]).select().single();
+            const { data: { user } } = await supabase.auth.getUser();
+            const recordWithReceiver = { ...newRecord, receiver_id: newRecord.receiver_id || user?.id };
+            const { data, error } = await supabase.from('service_records').insert([recordWithReceiver]).select().single();
             if (error) throw error;
 
             // 활동 로그 기록
-            const { data: { user } } = await supabase.auth.getUser();
             if (user && data) {
                 const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
                 const clientName = clients.find((c: any) => c.id === newRecord.client_id)?.name || '미지정';
@@ -201,10 +227,11 @@ export default function DashboardPage() {
             }
 
             setIsAddModalOpen(false);
-            setNewRecord({ client_id: '', type: '장애', details: '' });
+            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '' });
             setClientSearch('');
             showToast('접수가 등록되었습니다.', 'success');
             fetchDashboardData();
+            fetchStaff();
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
         } finally {
@@ -231,6 +258,7 @@ export default function DashboardPage() {
         if (!editingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
@@ -240,13 +268,17 @@ export default function DashboardPage() {
                     result: editingRecord.result,
                     status: editingRecord.status,
                     processed_at: editingRecord.processed_at,
-                    started_at: editingRecord.started_at
+                    started_at: editingRecord.started_at,
+                    receiver_id: editingRecord.receiver_id || null,
+                    first_handler_id: editingRecord.first_handler_id || null,
+                    handler_id: editingRecord.handler_id || null
                 })
                 .eq('id', editingRecord.id);
             if (error) throw error;
             setEditingRecord(null);
             showToast('내역이 수정되었습니다.', 'success');
             fetchDashboardData();
+            fetchStaff();
         } catch (error: any) {
             showToast(`수정 오류: ${error.message}`, 'error');
         } finally {
@@ -259,10 +291,12 @@ export default function DashboardPage() {
         if (!confirm('이 접수 내역을 정말 삭제하시겠습니까?')) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase.from('service_records').delete().eq('id', id);
             if (error) throw error;
             showToast('접수 내역이 삭제되었습니다.', 'info');
             fetchDashboardData();
+            fetchStaff();
             setViewingRecord(null);
         } catch (error: any) {
             showToast(`삭제 오류: ${error.message}`, 'error');
@@ -275,7 +309,7 @@ export default function DashboardPage() {
         const now = new Date();
         const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
             .toISOString().slice(0, 16);
-        setCompletingRecord({ id: record.id, processed_at: localDateTime, result: '' });
+        setCompletingRecord({ id: record.id, processed_at: localDateTime, result: '', handler_id: record.handler_id || '' });
     }
 
     async function handleCompleteSubmit(e: React.FormEvent) {
@@ -283,18 +317,21 @@ export default function DashboardPage() {
         if (!completingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
                     processed_at: new Date(completingRecord.processed_at).toISOString(),
                     result: completingRecord.result,
-                    status: 'completed'
+                    status: 'completed',
+                    handler_id: completingRecord.handler_id || user?.id
                 })
                 .eq('id', completingRecord.id);
             if (error) throw error;
             setCompletingRecord(null);
             showToast('처리가 완료되었습니다.', 'success');
             fetchDashboardData();
+            fetchStaff();
         } catch (error: any) {
             showToast(`완료 처리 오류: ${error.message}`, 'error');
         } finally {
@@ -306,7 +343,7 @@ export default function DashboardPage() {
         const now = new Date();
         const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
             .toISOString().slice(0, 16);
-        setProcessingRecord({ id: record.id, started_at: localDateTime, result: '' });
+        setProcessingRecord({ id: record.id, started_at: localDateTime, result: '', first_handler_id: record.first_handler_id || '' });
     }
 
     async function handleProcessingSubmit(e: React.FormEvent) {
@@ -314,18 +351,21 @@ export default function DashboardPage() {
         if (!processingRecord || isSubmitting) return;
         setIsSubmitting(true);
         try {
+            const { data: { user } } = await supabase.auth.getUser();
             const { error } = await supabase
                 .from('service_records')
                 .update({
                     status: 'processing',
                     started_at: new Date(processingRecord.started_at).toISOString(),
-                    result: processingRecord.result
+                    result: processingRecord.result,
+                    first_handler_id: processingRecord.first_handler_id || user?.id
                 })
                 .eq('id', processingRecord.id);
             if (error) throw error;
             setProcessingRecord(null);
             showToast('처리 중으로 변경되었습니다.', 'success');
             fetchDashboardData();
+            fetchStaff();
         } catch (error: any) {
             showToast(`처리 시작 오류: ${error.message}`, 'error');
         } finally {
@@ -334,10 +374,9 @@ export default function DashboardPage() {
     }
 
     const STATS_CONFIG = [
-        { label: '전체 거래처', value: stats.totalClients, icon: Users, color: 'text-blue-600', bg: 'bg-blue-50' },
-        { label: '대기 중', value: stats.pendingRecords, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
-        { label: '처리 중', value: stats.processingRecords, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-        { label: '금일 완료', value: stats.completedToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+        { label: '대기 중', value: stats.pendingRecords, icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50', filter: 'pending' },
+        { label: '처리 중', value: stats.processingRecords, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50', filter: 'processing' },
+        { label: '금일 완료', value: stats.completedToday, icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', filter: 'completed' },
     ];
 
     if (loading) {
@@ -351,40 +390,20 @@ export default function DashboardPage() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-slate-900">대시보드</h1>
+                <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
                 <div className="bg-white px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-800 shadow-sm whitespace-nowrap">
                     {new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })}
                 </div>
             </div>
 
-            {/* Latest Notice Banner */}
-            {latestNotice && (
-                <div
-                    onClick={() => setIsNoticeModalOpen(true)}
-                    className="bg-white border border-blue-100 rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:bg-blue-50/50 transition-all group shadow-sm"
-                >
-                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
-                        <Megaphone className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                            <span className="text-[11px] font-bold text-blue-600 uppercase tracking-tight">최신 공지</span>
-                            <span className="text-[11px] text-slate-400 font-medium">
-                                {new Date(latestNotice.created_at).toLocaleDateString()}
-                            </span>
-                        </div>
-                        <p className="text-[14px] font-medium text-slate-800 truncate group-hover:text-blue-700 transition-colors">
-                            {latestNotice.title}
-                        </p>
-                    </div>
-                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
-                </div>
-            )}
-
             {/* Stats Grid - Compact cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <div className="grid grid-cols-3 gap-3 md:gap-4">
                 {STATS_CONFIG.map((stat) => (
-                    <div key={stat.label} className="bg-white p-3 md:p-4 rounded-lg border border-slate-100 shadow-sm text-center">
+                    <div
+                        key={stat.label}
+                        onClick={() => stat.filter && router.push(`/dashboard/records?status=${stat.filter}`)}
+                        className="bg-white p-3 md:p-4 rounded-lg border border-slate-100 shadow-sm text-center cursor-pointer hover:border-blue-200 hover:shadow-md transition-all"
+                    >
                         <div className="flex items-center justify-center gap-2 mb-2">
                             <div className={`p-1 rounded-md ${stat.bg} ${stat.color}`}>
                                 <stat.icon className="w-3.5 h-3.5 md:w-4 md:h-4" />
@@ -453,10 +472,43 @@ export default function DashboardPage() {
                         className="w-full bg-blue-600 hover:bg-blue-700 text-white p-4 rounded-xl font-bold text-sm shadow-md shadow-blue-200 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
                     >
                         <Plus className="w-5 h-5" />
-                        신규 접수 등록
+                        문의 등록
                     </button>
                 </div>
             </div>
+
+            {/* Notice Section - Below Recent Records */}
+            {latestNotice && (
+                <div
+                    onClick={() => setIsNoticeModalOpen(true)}
+                    className="bg-white border border-blue-100 rounded-xl p-4 flex items-center gap-4 cursor-pointer hover:bg-blue-50/50 transition-all group shadow-sm"
+                >
+                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center shrink-0">
+                        <Megaphone className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-[11px] font-bold text-blue-600 uppercase tracking-tight">최신 공지</span>
+                            <span className="text-[11px] text-slate-400 font-medium">
+                                {new Date(latestNotice.created_at).toLocaleDateString()}
+                            </span>
+                        </div>
+                        <p className="text-[14px] font-medium text-slate-800 truncate group-hover:text-blue-700 transition-colors">
+                            {latestNotice.title}
+                        </p>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-blue-500 group-hover:translate-x-1 transition-all" />
+                </div>
+            )}
+
+            {/* Additional Quick Action Button */}
+            <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 rounded-xl font-bold text-sm shadow-lg shadow-blue-200/50 transition-all active:scale-[0.99] flex items-center justify-center gap-2"
+            >
+                <Plus className="w-5 h-5" />
+                문의 등록
+            </button>
 
             {/* Notice Detail Modal */}
             <Modal isOpen={isNoticeModalOpen} onClose={() => setIsNoticeModalOpen(false)} title="공지사항 확인">
@@ -497,49 +549,51 @@ export default function DashboardPage() {
                             value={clientSearch}
                             onChange={e => setClientSearch(e.target.value)}
                         />
-                        <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[250px] bg-white divide-y divide-slate-100 shadow-inner">
-                            {clients
-                                .filter((c: any) =>
-                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
-                                )
-                                .map((client: any) => {
-                                    const isSelected = newRecord.client_id === client.id;
-                                    return (
-                                        <div
-                                            key={client.id}
-                                            onClick={() => setNewRecord({ ...newRecord, client_id: client.id })}
-                                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
-                                                ? 'bg-blue-50 border-l-4 border-blue-600'
-                                                : 'hover:bg-slate-50'
-                                                }`}
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
-                                                    {client.name}
-                                                </span>
-                                                {client.biz_reg_no && (
-                                                    <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                        {clientSearch.trim() && (
+                            <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[250px] bg-white divide-y divide-slate-100 shadow-inner">
+                                {clients
+                                    .filter((c: any) =>
+                                        c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                        c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                    )
+                                    .map((client: any) => {
+                                        const isSelected = newRecord.client_id === client.id;
+                                        return (
+                                            <div
+                                                key={client.id}
+                                                onClick={() => setNewRecord({ ...newRecord, client_id: client.id })}
+                                                className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
+                                                    ? 'bg-blue-50 border-l-4 border-blue-600'
+                                                    : 'hover:bg-slate-50'
+                                                    }`}
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
+                                                        {client.name}
+                                                    </span>
+                                                    {client.biz_reg_no && (
+                                                        <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                    )}
+                                                </div>
+                                                {client.client_groups?.name && (
+                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
+                                                        }`}>
+                                                        {client.client_groups.name}
+                                                    </span>
                                                 )}
                                             </div>
-                                            {client.client_groups?.name && (
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                    {client.client_groups.name}
-                                                </span>
-                                            )}
+                                        );
+                                    })}
+                                {clients.filter((c: any) =>
+                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                ).length === 0 && (
+                                        <div className="p-8 text-center text-sm text-slate-400">
+                                            검색 결과가 없습니다.
                                         </div>
-                                    );
-                                })}
-                            {clients.filter((c: any) =>
-                                c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
-                            ).length === 0 && (
-                                    <div className="p-8 text-center text-sm text-slate-400">
-                                        검색 결과가 없습니다.
-                                    </div>
-                                )}
-                        </div>
+                                    )}
+                            </div>
+                        )}
                         <input type="hidden" required value={newRecord.client_id} />
                     </div>
 
@@ -560,6 +614,20 @@ export default function DashboardPage() {
                                 </button>
                             ))}
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">접수자</label>
+                        <select
+                            className="input-field w-full text-sm mb-4"
+                            value={newRecord.receiver_id}
+                            onChange={e => setNewRecord({ ...newRecord, receiver_id: e.target.value })}
+                        >
+                            <option value="">현재 사용자 (자동)</option>
+                            {staffList.map(s => (
+                                <option key={s.id} value={s.id}>{s.display_name}</option>
+                            ))}
+                        </select>
                     </div>
 
                     <div>
@@ -620,6 +688,21 @@ export default function DashboardPage() {
                             <div className="space-y-1 border-b border-slate-100 pb-2">
                                 <label className="text-[11px] font-medium text-slate-800 uppercase block mb-1">처리 결과</label>
                                 <p className="text-[14px] font-medium text-slate-800 leading-relaxed whitespace-pre-wrap">{viewingRecord.result || '아직 처리 결과가 없습니다.'}</p>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 border-b border-slate-100 pb-2">
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">접수자</label>
+                                    <p className="text-[13px] font-medium text-slate-700">{viewingRecord.receiver?.display_name || '-'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">1차 처리자</label>
+                                    <p className="text-[13px] font-medium text-slate-700">{viewingRecord.first_handler?.display_name || '-'}</p>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[11px] font-medium text-slate-800 uppercase">완료 담당자</label>
+                                    <p className="text-[13px] font-medium text-slate-700">{viewingRecord.handler?.display_name || '-'}</p>
+                                </div>
                             </div>
 
                             {(viewingRecord.started_at || viewingRecord.processed_at) && (
@@ -747,6 +830,51 @@ export default function DashboardPage() {
                                 value={editingRecord.result || ''}
                                 onChange={e => setEditingRecord({ ...editingRecord, result: e.target.value })}
                             />
+                        </div>
+                        <div className="space-y-3 pb-2 border-t border-slate-50 pt-2">
+                            <div className="grid grid-cols-1 gap-3">
+                                <div>
+                                    <label className="text-[11px] font-medium block mb-1">접수자</label>
+                                    <select
+                                        className="input-field w-full text-sm"
+                                        value={editingRecord.receiver_id || ''}
+                                        onChange={e => setEditingRecord({ ...editingRecord, receiver_id: e.target.value })}
+                                    >
+                                        <option value="">미지정</option>
+                                        {staffList.map(s => (
+                                            <option key={s.id} value={s.id}>{s.display_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[11px] font-medium block mb-1">1차 처리자</label>
+                                        <select
+                                            className="input-field w-full text-sm"
+                                            value={editingRecord.first_handler_id || ''}
+                                            onChange={e => setEditingRecord({ ...editingRecord, first_handler_id: e.target.value })}
+                                        >
+                                            <option value="">미지정</option>
+                                            {staffList.map(s => (
+                                                <option key={s.id} value={s.id}>{s.display_name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[11px] font-medium block mb-1">완료 담당자</label>
+                                        <select
+                                            className="input-field w-full text-sm"
+                                            value={editingRecord.handler_id || ''}
+                                            onChange={e => setEditingRecord({ ...editingRecord, handler_id: e.target.value })}
+                                        >
+                                            <option value="">미지정</option>
+                                            {staffList.map(s => (
+                                                <option key={s.id} value={s.id}>{s.display_name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1">취소</button>

@@ -21,11 +21,11 @@ import { useToast } from '@/components/Toast';
 import { Modal } from '@/components/Modal';
 
 const MENU_ITEMS = [
-    { name: '대시보드', icon: LayoutDashboard, href: '/dashboard', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', roles: ['operator', 'admin', 'callcenter', 'field'] },
     { name: '공지사항', icon: Bell, href: '/dashboard/notices', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '거래처', icon: Users, href: '/dashboard/clients', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: '거래처 관리', icon: Users, href: '/dashboard/clients', roles: ['operator', 'admin', 'callcenter', 'field'] },
     { name: '접수내역', icon: FileText, href: '/dashboard/records', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '시스템', icon: ShieldCheck, href: '/dashboard/admin', roles: ['operator', 'admin'] },
+    { name: '관리자 설정', icon: ShieldCheck, href: '/dashboard/admin', roles: ['operator', 'admin'] },
 ];
 
 export default function DashboardLayout({
@@ -171,7 +171,7 @@ export default function DashboardLayout({
             {/* Desktop Sidebar */}
             <aside className="hidden lg:flex w-64 flex-col border-r bg-white h-screen sticky top-0 transition-all duration-300">
                 <div className="h-16 flex items-center px-6 border-b">
-                    <span className="text-xl font-bold tracking-tight text-primary">제이이 네트웍스</span>
+                    <span className="text-xl font-bold tracking-tight text-primary">JE Networks</span>
                 </div>
                 <nav className="flex-1 p-0 py-4 space-y-0">
                     {filteredMenuItems.map((item) => (
@@ -188,15 +188,6 @@ export default function DashboardLayout({
                         </Link>
                     ))}
                 </nav>
-                <div className="p-4 border-t">
-                    <button
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-100 transition-colors rounded-lg"
-                    >
-                        <LogOut className="w-4 h-4" />
-                        로그아웃
-                    </button>
-                </div>
             </aside>
 
             {/* Mobile Sidebar (Overlay) */}
@@ -205,7 +196,7 @@ export default function DashboardLayout({
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
                     <div className="fixed inset-y-0 left-0 w-72 bg-white shadow-none flex flex-col border-r">
                         <div className="h-16 flex items-center justify-between px-6 border-b">
-                            <span className="text-lg font-bold tracking-tighter">제이이 네트웍스</span>
+                            <span className="text-lg font-bold tracking-tighter">JE Networks</span>
                             <button onClick={() => setIsMobileMenuOpen(false)}>
                                 <X className="w-5 h-5" />
                             </button>
@@ -246,10 +237,10 @@ export default function DashboardLayout({
                         <button onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden text-slate-600">
                             <Menu className="w-6 h-6" />
                         </button>
-                        <span className="font-extrabold tracking-tight text-xl text-slate-900 lg:hidden">제이이 네트웍스</span>
+                        <span className="font-extrabold tracking-tight text-xl text-slate-900 lg:hidden">JE Networks</span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                         <button
                             onClick={openMyProfile}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100"
@@ -261,6 +252,13 @@ export default function DashboardLayout({
                                 <p className="text-xs font-bold text-slate-900 leading-none">{myProfile?.display_name || '내 정보'}</p>
                                 <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-tight">{userRole}</p>
                             </div>
+                        </button>
+                        <button
+                            onClick={handleLogout}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            <span className="hidden sm:inline">로그아웃</span>
                         </button>
                     </div>
                 </header>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -61,8 +61,11 @@ const formatPhoneNumber = (value: string): string => {
         return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
     }
 
-    // 0으로 시작하지 않는 경우 그냥 반환
-    return numbers;
+    // 0으로 시작하지 않는 경우도 일반적인 포맷 적용 (xxx-xxxx-xxxx)
+    if (numbers.length <= 3) return numbers;
+    if (numbers.length <= 7) return `${numbers.slice(0, 3)}-${numbers.slice(3)}`;
+    if (numbers.length <= 11) return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
+    return `${numbers.slice(0, 3)}-${numbers.slice(3, 7)}-${numbers.slice(7, 11)}`;
 };
 
 // 사업자등록번호 자동 포맷팅 함수 (3-2-5: 123-45-67890)
@@ -78,6 +81,7 @@ const formatBizRegNo = (value: string): string => {
 
 export default function ClientsPage() {
     const [searchTerm, setSearchTerm] = useState('');
+    const [searchColumn, setSearchColumn] = useState('all');
     const [debouncedSearch, setDebouncedSearch] = useState('');
     const [clients, setClients] = useState<any[]>([]);
     const [groups, setGroups] = useState<any[]>([]);
@@ -106,7 +110,7 @@ export default function ClientsPage() {
         contact_phone: '',
         address: '',
         addressDetail: '',
-        van_company: '',
+        van_companies: [] as string[],
         equipment: [] as { name: string; quantity: number }[],
         group_id: ''
     });
@@ -169,7 +173,7 @@ export default function ClientsPage() {
         if (allowedGroupsLoaded) {
             fetchClients();
         }
-    }, [debouncedSearch, currentPage, allowedGroups, allowedGroupsLoaded]);
+    }, [debouncedSearch, searchColumn, currentPage, allowedGroups, allowedGroupsLoaded]);
 
     async function fetchUserRole() {
         const { data: { user } } = await supabase.auth.getUser();
@@ -248,8 +252,17 @@ export default function ClientsPage() {
             if (filters['장비']) query = query.ilike('equipment', `%${filters['장비']}%`);
             if (filters['그룹']) query = query.ilike('client_groups.name', `%${filters['그룹']}%`);
 
-            // 일반 검색어가 있으면 전체 필드에서 검색
-            if (generalSearch.trim()) {
+            // 컬럼 선택 검색 또는 일반 검색
+            if (searchColumn !== 'all' && generalSearch.trim()) {
+                const search = generalSearch;
+                if (searchColumn === 'name') query = query.ilike('name', `%${search}%`);
+                else if (searchColumn === 'biz_reg_no') query = query.ilike('biz_reg_no', `%${search}%`);
+                else if (searchColumn === 'phone') query = query.ilike('phone', `%${search}%`);
+                else if (searchColumn === 'contact_phone') query = query.ilike('contact_phone', `%${search}%`);
+                else if (searchColumn === 'address') query = query.ilike('address', `%${search}%`);
+                else if (searchColumn === 'van_company') query = query.ilike('van_company', `%${search}%`);
+                else if (searchColumn === 'equipment') query = query.ilike('equipment', `%${search}%`);
+            } else if (generalSearch.trim()) {
                 const search = generalSearch;
                 query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,biz_reg_no.ilike.%${search}%,address.ilike.%${search}%`);
             }
@@ -292,7 +305,7 @@ export default function ClientsPage() {
                 phone: newClient.phone,
                 contact_phone: newClient.contact_phone,
                 address: fullAddress,
-                van_company: newClient.van_company,
+                van_company: newClient.van_companies.join(', '),
                 equipment: formatEquipment(newClient.equipment),
                 group_id: newClient.group_id || null
             };
@@ -300,7 +313,7 @@ export default function ClientsPage() {
             if (error) throw error;
             setIsModalOpen(false);
             fetchClients();
-            setNewClient({ name: '', biz_reg_no: '', phone: '', contact_phone: '', address: '', addressDetail: '', van_company: '', equipment: [], group_id: '' });
+            setNewClient({ name: '', biz_reg_no: '', phone: '', contact_phone: '', address: '', addressDetail: '', van_companies: [] as string[], equipment: [], group_id: '' });
             showToast('\uAC70\uB798\uCC98\uAC00 \uC131\uACF5\uC801\uC73C\uB85C \uB4F1\uB85D\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
         } catch (error: any) {
             showToast(`\uB4F1\uB85D \uC2E4\uD328: ${error.message}`, 'error');
@@ -327,7 +340,7 @@ export default function ClientsPage() {
                     phone: editingClient.phone,
                     contact_phone: editingClient.contact_phone,
                     address: fullAddress,
-                    van_company: editingClient.van_company,
+                    van_company: Array.isArray(editingClient.van_companies) ? editingClient.van_companies.join(', ') : (editingClient.van_company || ''),
                     equipment: Array.isArray(editingClient.equipment) ? formatEquipment(editingClient.equipment) : editingClient.equipment,
                     group_id: editingClient.group_id || null
                 })
@@ -400,7 +413,7 @@ export default function ClientsPage() {
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">거래처</h1>
+                <h1 className="text-2xl font-bold">거래처 관리</h1>
                 <div className="flex gap-2">
                     <button onClick={handleExportExcel} className="btn-outline">엑셀</button>
                     {(userRole === 'admin' || userRole === 'operator') && (
@@ -411,16 +424,32 @@ export default function ClientsPage() {
                 </div>
             </div>
 
-            <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                    type="text"
-                    placeholder="검색어 입력 또는 상호:제이이, 전화:02-1234, 사업자:123-45"
-                    className="input-field"
-                    style={{ paddingLeft: '2.5rem' }}
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                />
+            <div className="flex gap-2 relative">
+                <select
+                    value={searchColumn}
+                    onChange={e => { setSearchColumn(e.target.value); setCurrentPage(1); }}
+                    className="btn-outline px-3 text-sm font-medium min-w-[120px]"
+                >
+                    <option value="all">전체</option>
+                    <option value="name">상호명</option>
+                    <option value="biz_reg_no">사업자번호</option>
+                    <option value="phone">대표번호</option>
+                    <option value="contact_phone">담당자연락처</option>
+                    <option value="address">주소</option>
+                    <option value="van_company">밴사</option>
+                    <option value="equipment">장비</option>
+                </select>
+                <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="검색어를 입력하세요"
+                        className="input-field w-full"
+                        style={{ paddingLeft: '2.5rem' }}
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                    />
+                </div>
             </div>
 
             {loading ? (
@@ -619,15 +648,29 @@ export default function ClientsPage() {
                         </div>
                     </div>
                     <div>
-                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사</label>
-                        <select
-                            className="input-field w-full text-[14px] font-medium text-slate-800"
-                            value={newClient.van_company}
-                            onChange={e => setNewClient({ ...newClient, van_company: e.target.value })}
-                        >
-                            <option value="">선택 안함</option>
-                            {vanCompanies.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
-                        </select>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사 (복수 선택 가능)</label>
+                        <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[60px]">
+                            {vanCompanies.map(v => {
+                                const isSelected = newClient.van_companies?.includes(v.name);
+                                return (
+                                    <label key={v.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-200'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={isSelected}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setNewClient({ ...newClient, van_companies: [...(newClient.van_companies || []), v.name] });
+                                                } else {
+                                                    setNewClient({ ...newClient, van_companies: (newClient.van_companies || []).filter((x: string) => x !== v.name) });
+                                                }
+                                            }}
+                                            className="w-4 h-4 rounded text-blue-600"
+                                        />
+                                        <span className="text-sm font-medium">{v.name}</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
                     </div>
                     <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비 및 대수</label>
@@ -868,15 +911,31 @@ export default function ClientsPage() {
                             </div>
                         </div>
                         <div>
-                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사</label>
-                            <select
-                                className="input-field w-full text-[14px] font-medium text-slate-800"
-                                value={editingClient.van_company || ''}
-                                onChange={e => setEditingClient({ ...editingClient, van_company: e.target.value })}
-                            >
-                                <option value="">선택 안함</option>
-                                {vanCompanies.map(v => <option key={v.id} value={v.name}>{v.name}</option>)}
-                            </select>
+                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">VAN사 (복수 선택 가능)</label>
+                            <div className="flex flex-wrap gap-2 p-3 bg-slate-50 rounded-lg border border-slate-200 min-h-[60px]">
+                                {vanCompanies.map(v => {
+                                    const vanList = editingClient.van_companies || (editingClient.van_company ? editingClient.van_company.split(', ').filter((x: string) => x) : []);
+                                    const isSelected = vanList.includes(v.name);
+                                    return (
+                                        <label key={v.id} className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border ${isSelected ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-slate-200 text-slate-700 hover:border-blue-200'}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={(e) => {
+                                                    const currentList = editingClient.van_companies || (editingClient.van_company ? editingClient.van_company.split(', ').filter((x: string) => x) : []);
+                                                    if (e.target.checked) {
+                                                        setEditingClient({ ...editingClient, van_companies: [...currentList, v.name] });
+                                                    } else {
+                                                        setEditingClient({ ...editingClient, van_companies: currentList.filter((x: string) => x !== v.name) });
+                                                    }
+                                                }}
+                                                className="w-4 h-4 rounded text-blue-600"
+                                            />
+                                            <span className="text-sm font-medium">{v.name}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
                         </div>
                         <div>
                             <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">장비 및 대수</label>
@@ -966,3 +1025,7 @@ export default function ClientsPage() {
         </div >
     );
 }
+
+
+
+
