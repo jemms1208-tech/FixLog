@@ -16,18 +16,19 @@ import {
     Plus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
 
 const STATUS_MAP = {
-    pending: { label: '대기', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
-    processing: { label: '처리중', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-    completed: { label: '완료', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    pending: { label: '\uB300\uAE30', icon: AlertCircle, color: 'text-red-600', bg: 'bg-red-50' },
+    processing: { label: '\uCC98\uB9AC\uC911', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+    completed: { label: '\uC644\uB8CC', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50' },
 };
 
 export default function DashboardPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [stats, setStats] = useState({
         totalClients: 0,
         pendingRecords: 0,
@@ -62,6 +63,15 @@ export default function DashboardPage() {
         fetchDashboardData();
         fetchStaff();
     }, []);
+
+    // Handle openInquiry query parameter from navigation menu
+    useEffect(() => {
+        if (searchParams.get('openInquiry') === 'true') {
+            setIsAddModalOpen(true);
+            // Clear the query parameter from URL without navigation
+            router.replace('/dashboard', { scroll: false });
+        }
+    }, [searchParams, router]);
 
     async function fetchStaff() {
         try {
@@ -501,14 +511,7 @@ export default function DashboardPage() {
                 </div>
             )}
 
-            {/* Additional Quick Action Button */}
-            <button
-                onClick={() => setIsAddModalOpen(true)}
-                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white p-4 rounded-xl font-bold text-sm shadow-lg shadow-blue-200/50 transition-all active:scale-[0.99] flex items-center justify-center gap-2"
-            >
-                <Plus className="w-5 h-5" />
-                문의 등록
-            </button>
+
 
             {/* Notice Detail Modal */}
             <Modal isOpen={isNoticeModalOpen} onClose={() => setIsNoticeModalOpen(false)} title="공지사항 확인">

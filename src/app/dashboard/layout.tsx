@@ -14,7 +14,8 @@ import {
     Bell,
     X,
     Loader2,
-    UserCircle
+    UserCircle,
+    MessageSquarePlus
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useToast } from '@/components/Toast';
@@ -22,10 +23,11 @@ import { Modal } from '@/components/Modal';
 
 const MENU_ITEMS = [
     { name: 'Dashboard', icon: LayoutDashboard, href: '/dashboard', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '공지사항', icon: Bell, href: '/dashboard/notices', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '거래처 관리', icon: Users, href: '/dashboard/clients', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '접수내역', icon: FileText, href: '/dashboard/records', roles: ['operator', 'admin', 'callcenter', 'field'] },
-    { name: '관리자 설정', icon: ShieldCheck, href: '/dashboard/admin', roles: ['operator', 'admin'] },
+    { name: '\uACF5\uC9C0\uC0AC\uD56D', icon: Bell, href: '/dashboard/notices', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: '\uBB38\uC758\uB4F1\uB85D', icon: MessageSquarePlus, href: '/dashboard?openInquiry=true', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: '\uAC70\uB798\uCC98 \uAD00\uB9AC', icon: Users, href: '/dashboard/clients', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: '\uC811\uC218\uB0B4\uC5ED', icon: FileText, href: '/dashboard/records', roles: ['operator', 'admin', 'callcenter', 'field'] },
+    { name: '\uAD00\uB9AC\uC790 \uC124\uC815', icon: ShieldCheck, href: '/dashboard/admin', roles: ['operator', 'admin'] },
 ];
 
 export default function DashboardLayout({
@@ -174,19 +176,24 @@ export default function DashboardLayout({
                     <span className="text-xl font-bold tracking-tight text-primary">JE Networks</span>
                 </div>
                 <nav className="flex-1 p-0 py-4 space-y-0">
-                    {filteredMenuItems.map((item) => (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={`flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors border-l-4 ${pathname === item.href
-                                ? 'bg-blue-50 border-blue-600 text-blue-600'
-                                : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                                }`}
-                        >
-                            <item.icon className="w-4 h-4" />
-                            {item.name}
-                        </Link>
-                    ))}
+                    {filteredMenuItems.map((item) => {
+                        const isInquiry = item.href.includes('openInquiry');
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={`flex items-center gap-3 px-6 py-3 text-sm font-medium transition-colors border-l-4 ${isInquiry
+                                    ? 'border-emerald-500 text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                                    : pathname === item.href
+                                        ? 'bg-blue-50 border-blue-600 text-blue-600'
+                                        : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                                    }`}
+                            >
+                                <item.icon className={`w-4 h-4 ${isInquiry ? 'text-emerald-600' : ''}`} />
+                                {item.name}
+                            </Link>
+                        );
+                    })}
                 </nav>
             </aside>
 
@@ -202,30 +209,26 @@ export default function DashboardLayout({
                             </button>
                         </div>
                         <nav className="flex-1 p-0 py-4">
-                            {filteredMenuItems.map((item) => (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                    className={`flex items-center gap-4 px-8 py-4 text-sm font-bold transition-colors border-l-4 ${pathname === item.href
-                                        ? 'bg-blue-50 border-blue-600 text-blue-600'
-                                        : 'border-transparent text-slate-500'
-                                        }`}
-                                >
-                                    <item.icon className="w-5 h-5" />
-                                    {item.name}
-                                </Link>
-                            ))}
+                            {filteredMenuItems.map((item) => {
+                                const isInquiry = item.href.includes('openInquiry');
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                        className={`flex items-center gap-4 px-8 py-4 text-sm font-bold transition-colors border-l-4 ${isInquiry
+                                            ? 'border-emerald-500 text-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                                            : pathname === item.href
+                                                ? 'bg-blue-50 border-blue-600 text-blue-600'
+                                                : 'border-transparent text-slate-500'
+                                            }`}
+                                    >
+                                        <item.icon className={`w-5 h-5 ${isInquiry ? 'text-emerald-600' : ''}`} />
+                                        {item.name}
+                                    </Link>
+                                );
+                            })}
                         </nav>
-                        <div className="p-6 border-t whitespace-nowrap">
-                            <button
-                                onClick={handleLogout}
-                                className="flex w-full items-center gap-4 px-4 py-3 text-sm font-bold text-red-600 border border-red-200 rounded-xl hover:bg-red-50 transition-colors"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                로그아웃
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}
