@@ -910,6 +910,19 @@ export default function DashboardPage() {
                                 onChange={e => setCompletingRecord({ ...completingRecord, result: e.target.value })}
                             />
                         </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">완료 담당자</label>
+                            <select
+                                className="input-field w-full text-sm"
+                                value={completingRecord.handler_id || ''}
+                                onChange={e => setCompletingRecord({ ...completingRecord, handler_id: e.target.value })}
+                            >
+                                <option value="">현재 사용자 (자동)</option>
+                                {staffList.map(s => (
+                                    <option key={s.id} value={s.id}>{s.display_name}</option>
+                                ))}
+                            </select>
+                        </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setCompletingRecord(null)} className="btn-outline flex-1">취소</button>
                             <button type="submit" className="btn-primary flex-1">완료</button>
@@ -941,6 +954,19 @@ export default function DashboardPage() {
                                 value={processingRecord.result}
                                 onChange={e => setProcessingRecord({ ...processingRecord, result: e.target.value })}
                             />
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-medium block mb-1">1차 처리자</label>
+                            <select
+                                className="input-field w-full text-sm"
+                                value={processingRecord.first_handler_id || ''}
+                                onChange={e => setProcessingRecord({ ...processingRecord, first_handler_id: e.target.value })}
+                            >
+                                <option value="">현재 사용자 (자동)</option>
+                                {staffList.map(s => (
+                                    <option key={s.id} value={s.id}>{s.display_name}</option>
+                                ))}
+                            </select>
                         </div>
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setProcessingRecord(null)} className="btn-outline flex-1">취소</button>
