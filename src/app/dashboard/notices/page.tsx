@@ -13,7 +13,8 @@ import {
     Trash2,
     Pencil,
     Shield,
-    Eye
+    Eye,
+    Users
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { Modal } from '@/components/Modal';
@@ -34,6 +35,7 @@ export default function NoticesPage() {
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState<string>('field');
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+    const [groups, setGroups] = useState<{ id: string, name: string }[]>([]);
 
     // Modals
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -44,7 +46,9 @@ export default function NoticesPage() {
     const [formData, setFormData] = useState({
         title: '',
         content: '',
-        allowed_roles: ['operator', 'admin', 'callcenter', 'field']
+        allowed_roles: ['operator', 'admin', 'callcenter', 'field'],
+        allowed_groups: [] as string[],
+        isAllGroups: true
     });
     const { showToast } = useToast();
     const supabase = createClient();
@@ -61,6 +65,9 @@ export default function NoticesPage() {
             const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single();
             if (profile) setUserRole(profile.role || 'field');
         }
+        // Fetch groups
+        const { data: groupsData } = await supabase.from('client_groups').select('id, name').order('name');
+        setGroups(groupsData || []);
         await fetchNotices();
     }
 
@@ -87,10 +94,12 @@ export default function NoticesPage() {
     async function handleCreate(e: React.FormEvent) {
         e.preventDefault();
         try {
+            const { isAllGroups, ...insertData } = formData;
             const { data, error } = await supabase
                 .from('notices')
                 .insert([{
-                    ...formData,
+                    ...insertData,
+                    allowed_groups: isAllGroups ? [] : formData.allowed_groups,
                     author_id: currentUserId
                 }])
                 .select()
@@ -111,7 +120,7 @@ export default function NoticesPage() {
             }]);
 
             setIsCreateModalOpen(false);
-            setFormData({ title: '', content: '', allowed_roles: ALL_ROLES });
+            setFormData({ title: '', content: '', allowed_roles: ALL_ROLES, allowed_groups: [], isAllGroups: true });
             showToast('공지사항이 등록되었습니다.', 'success');
             fetchNotices();
         } catch (error: any) {
@@ -128,7 +137,8 @@ export default function NoticesPage() {
                 .update({
                     title: editingNotice.title,
                     content: editingNotice.content,
-                    allowed_roles: editingNotice.allowed_roles
+                    allowed_roles: editingNotice.allowed_roles,
+                    allowed_groups: editingNotice.isAllGroups ? [] : (editingNotice.allowed_groups || [])
                 })
                 .eq('id', editingNotice.id);
 
@@ -314,11 +324,49 @@ export default function NoticesPage() {
                             })}
                         </div>
                         {formData.allowed_roles.length === 0 && (
-                            <p className="text-[10px] text-red-500 mt-1 font-medium">* 최소 한 개 이상의 권한을 선택해야 합니다.</p>
+                            <p className="text-[10px] text-red-500 mt-1 font-medium">* {'\uCD5C\uC18C \uD55C \uAC1C \uC774\uC0C1\uC758 \uAD8C\uD55C\uC744 \uC120\uD0DD\uD574\uC57C \uD569\uB2C8\uB2E4.'}</p>
                         )}
                     </div>
                     <div>
-                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">공지 제목 *</label>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase flex items-center gap-1.5">
+                            <Users className="w-3.5 h-3.5" />
+                            {'\uB300\uC0C1 \uADF8\uB8F9'}
+                        </label>
+                        <label className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 cursor-pointer mb-2 border border-slate-100">
+                            <input
+                                type="checkbox"
+                                checked={formData.isAllGroups}
+                                onChange={(e) => setFormData({ ...formData, isAllGroups: e.target.checked, allowed_groups: [] })}
+                                className="w-4 h-4 rounded text-blue-600"
+                            />
+                            <div className="flex flex-col">
+                                <span className="text-sm font-bold text-slate-900">{'\uC804\uCCB4 \uADF8\uB8F9'}</span>
+                                <span className="text-[10px] text-slate-500">{'\uBAA8\uB4E0 \uADF8\uB8F9\uC5D0\uAC8C \uACF5\uC9C0\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4.'}</span>
+                            </div>
+                        </label>
+                        {!formData.isAllGroups && (
+                            <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                                {groups.map(g => (
+                                    <label key={g.id} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.allowed_groups.includes(g.id)}
+                                            onChange={(e) => {
+                                                const newGroups = e.target.checked
+                                                    ? [...formData.allowed_groups, g.id]
+                                                    : formData.allowed_groups.filter(id => id !== g.id);
+                                                setFormData({ ...formData, allowed_groups: newGroups });
+                                            }}
+                                            className="w-4 h-4 rounded text-blue-600"
+                                        />
+                                        <span className="text-sm font-medium text-slate-700">{g.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">{'\uACF5\uC9C0 \uC81C\uBAA9 *'}</label>
                         <input
                             required
                             type="text"
@@ -396,7 +444,46 @@ export default function NoticesPage() {
                             </div>
                         </div>
                         <div>
-                            <label className="text-xs font-bold text-slate-500 mb-1.5 block uppercase tracking-wider">공지 제목 *</label>
+                            <label className="text-xs font-bold text-slate-500 mb-1.5 block uppercase tracking-wider flex items-center gap-1.5">
+                                <Users className="w-3.5 h-3.5" />
+                                {'\uB300\uC0C1 \uADF8\uB8F9'}
+                            </label>
+                            <label className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 cursor-pointer mb-2 border border-slate-100">
+                                <input
+                                    type="checkbox"
+                                    checked={editingNotice.isAllGroups}
+                                    onChange={(e) => setEditingNotice({ ...editingNotice, isAllGroups: e.target.checked, allowed_groups: [] })}
+                                    className="w-4 h-4 rounded text-blue-600"
+                                />
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-900">{'\uC804\uCCB4 \uADF8\uB8F9'}</span>
+                                    <span className="text-[10px] text-slate-500">{'\uBAA8\uB4E0 \uADF8\uB8F9\uC5D0\uAC8C \uACF5\uC9C0\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4.'}</span>
+                                </div>
+                            </label>
+                            {!editingNotice.isAllGroups && (
+                                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                                    {groups.map(g => (
+                                        <label key={g.id} className="flex items-center gap-2 p-2 border border-slate-200 rounded-lg hover:bg-slate-50 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={(editingNotice.allowed_groups || []).includes(g.id)}
+                                                onChange={(e) => {
+                                                    const currentGroups = editingNotice.allowed_groups || [];
+                                                    const newGroups = e.target.checked
+                                                        ? [...currentGroups, g.id]
+                                                        : currentGroups.filter((id: string) => id !== g.id);
+                                                    setEditingNotice({ ...editingNotice, allowed_groups: newGroups });
+                                                }}
+                                                className="w-4 h-4 rounded text-blue-600"
+                                            />
+                                            <span className="text-sm font-medium text-slate-700">{g.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 mb-1.5 block uppercase tracking-wider">{'\uACF5\uC9C0 \uC81C\uBAA9 *'}</label>
                             <input
                                 required
                                 type="text"
@@ -460,7 +547,13 @@ export default function NoticesPage() {
                                 <>
                                     <button
                                         onClick={() => {
-                                            setEditingNotice({ ...viewNotice, allowed_roles: viewNotice.allowed_roles || ALL_ROLES });
+                                            const groups = viewNotice.allowed_groups || [];
+                                            setEditingNotice({
+                                                ...viewNotice,
+                                                allowed_roles: viewNotice.allowed_roles || ALL_ROLES,
+                                                allowed_groups: groups,
+                                                isAllGroups: groups.length === 0
+                                            });
                                             setViewNotice(null);
                                         }}
                                         className="flex-1 btn-outline h-12"

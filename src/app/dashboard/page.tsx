@@ -143,9 +143,17 @@ export default function DashboardPage() {
                 processingQuery = processingQuery.in('client_id', allowedClientIds);
                 completedQuery = completedQuery.in('client_id', allowedClientIds);
             } else if (allowedClientIds !== null && allowedClientIds.length === 0) {
-                // 접근 가능한 거래처가 없으면 0으로 설정
+                // 접근 가능한 거래처가 없어도 공지는 표시
+                const { data: noticeDataArray } = await supabase
+                    .from('notices')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(1);
+                const noticeData = noticeDataArray && noticeDataArray.length > 0 ? noticeDataArray[0] : null;
+
                 setStats({ totalClients: 0, pendingRecords: 0, processingRecords: 0, completedToday: 0 });
                 setRecentRecords([]);
+                setLatestNotice(noticeData);
                 setLoading(false);
                 return;
             }
@@ -169,13 +177,14 @@ export default function DashboardPage() {
 
             const { data: records } = await recordsQuery;
 
-            // Fetch latest notice
-            const { data: noticeData } = await supabase
+            // Fetch latest notice (RLS will filter based on user's groups)
+            const { data: noticeDataArray, error: noticeError } = await supabase
                 .from('notices')
                 .select('*')
                 .order('created_at', { ascending: false })
-                .limit(1)
-                .single();
+                .limit(1);
+            console.log('Notice fetch result:', { noticeDataArray, noticeError, user: user?.id });
+            const noticeData = noticeDataArray && noticeDataArray.length > 0 ? noticeDataArray[0] : null;
 
             // 거래처 목록 조회 (접수 등록용, 그룹 필터링 적용)
             let clientsForModalQuery = supabase.from('clients').select('id, name, biz_reg_no, client_groups(name)').order('name');

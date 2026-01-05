@@ -14,14 +14,30 @@ import {
     AlertCircle,
     Plus,
     Trash2,
-    ArrowUp,
-    ArrowDown,
+    GripVertical,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { resetUserPassword, deleteUser } from '@/app/actions/admin';
 import { Modal } from '@/components/Modal';
 import { useToast } from '@/components/Toast';
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const ROLE_LABELS = {
     operator: { label: '운영자', color: 'text-purple-600', bg: 'bg-purple-50' },
@@ -92,10 +108,54 @@ const DETAIL_KEY_LABELS = {
 };
 
 const STATUS_LABELS = {
-    'pending': '대기',
-    'processing': '처리중',
-    'completed': '완료'
+    'pending': '\uB300\uAE30',
+    'processing': '\uCC98\uB9AC\uC911',
+    'completed': '\uC644\uB8CC'
 };
+
+// Sortable Item Component for drag-and-drop
+function SortableItem({ id, name, onDelete }: { id: string; name: string; onDelete: (id: string) => void }) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group"
+        >
+            <div className="flex items-center gap-2">
+                <button
+                    type="button"
+                    className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600"
+                    {...attributes}
+                    {...listeners}
+                >
+                    <GripVertical className="w-4 h-4" />
+                </button>
+                <span className="text-sm font-medium text-slate-700">{name}</span>
+            </div>
+            <button
+                onClick={() => onDelete(id)}
+                className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+                <Trash2 className="w-3.5 h-3.5" />
+            </button>
+        </div>
+    );
+}
 
 export default function AdminPage() {
     const router = useRouter();
@@ -161,7 +221,7 @@ export default function AdminPage() {
             }
 
             const { data: profiles, error: pError } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-            const { data: groups, error: gError } = await supabase.from('client_groups').select('*').order('name');
+            const { data: groups, error: gError } = await supabase.from('client_groups').select('*').order('sort_order');
             const { data: types, error: tError } = await supabase.from('service_types').select('*').order('sort_order');
             const { data: vans, error: vError } = await supabase.from('van_companies').select('*').order('sort_order');
             const { data: equips, error: eError } = await supabase.from('equipment_types').select('*').order('sort_order');
@@ -327,61 +387,94 @@ export default function AdminPage() {
         }
     }
 
-    // Reorder handlers
-    async function handleReorderServiceType(id: string, direction: 'up' | 'down') {
-        const idx = serviceTypes.findIndex(t => t.id === id);
-        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === serviceTypes.length - 1)) return;
+    // DndKit sensors configuration
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
 
-        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const newOrder = [...serviceTypes];
-        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+    // Drag end handlers for reordering
+    async function handleServiceTypeDragEnd(event: DragEndEvent) {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = serviceTypes.findIndex(t => t.id === active.id);
+        const newIndex = serviceTypes.findIndex(t => t.id === over.id);
+        const newOrder = arrayMove(serviceTypes, oldIndex, newIndex);
         setServiceTypes(newOrder);
 
+        // Update sort_order in DB
         try {
-            await Promise.all([
-                supabase.from('service_types').update({ sort_order: idx }).eq('id', newOrder[idx].id),
-                supabase.from('service_types').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
-            ]);
+            await Promise.all(
+                newOrder.map((item, idx) =>
+                    supabase.from('service_types').update({ sort_order: idx }).eq('id', item.id)
+                )
+            );
         } catch (error) {
             console.error('Reorder error:', error);
             fetchAdminData();
         }
     }
 
-    async function handleReorderVanCompany(id: string, direction: 'up' | 'down') {
-        const idx = vanCompanies.findIndex(v => v.id === id);
-        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === vanCompanies.length - 1)) return;
+    async function handleVanCompanyDragEnd(event: DragEndEvent) {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
 
-        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const newOrder = [...vanCompanies];
-        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+        const oldIndex = vanCompanies.findIndex(v => v.id === active.id);
+        const newIndex = vanCompanies.findIndex(v => v.id === over.id);
+        const newOrder = arrayMove(vanCompanies, oldIndex, newIndex);
         setVanCompanies(newOrder);
 
         try {
-            await Promise.all([
-                supabase.from('van_companies').update({ sort_order: idx }).eq('id', newOrder[idx].id),
-                supabase.from('van_companies').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
-            ]);
+            await Promise.all(
+                newOrder.map((item, idx) =>
+                    supabase.from('van_companies').update({ sort_order: idx }).eq('id', item.id)
+                )
+            );
         } catch (error) {
             console.error('Reorder error:', error);
             fetchAdminData();
         }
     }
 
-    async function handleReorderEquipmentType(id: string, direction: 'up' | 'down') {
-        const idx = equipmentTypes.findIndex(e => e.id === id);
-        if ((direction === 'up' && idx === 0) || (direction === 'down' && idx === equipmentTypes.length - 1)) return;
+    async function handleEquipmentTypeDragEnd(event: DragEndEvent) {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
 
-        const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
-        const newOrder = [...equipmentTypes];
-        [newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]];
+        const oldIndex = equipmentTypes.findIndex(e => e.id === active.id);
+        const newIndex = equipmentTypes.findIndex(e => e.id === over.id);
+        const newOrder = arrayMove(equipmentTypes, oldIndex, newIndex);
         setEquipmentTypes(newOrder);
 
         try {
-            await Promise.all([
-                supabase.from('equipment_types').update({ sort_order: idx }).eq('id', newOrder[idx].id),
-                supabase.from('equipment_types').update({ sort_order: swapIdx }).eq('id', newOrder[swapIdx].id)
-            ]);
+            await Promise.all(
+                newOrder.map((item, idx) =>
+                    supabase.from('equipment_types').update({ sort_order: idx }).eq('id', item.id)
+                )
+            );
+        } catch (error) {
+            console.error('Reorder error:', error);
+            fetchAdminData();
+        }
+    }
+
+    async function handleGroupDragEnd(event: DragEndEvent) {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = groups.findIndex(g => g.id === active.id);
+        const newIndex = groups.findIndex(g => g.id === over.id);
+        const newOrder = arrayMove(groups, oldIndex, newIndex);
+        setGroups(newOrder);
+
+        try {
+            await Promise.all(
+                newOrder.map((item, idx) =>
+                    supabase.from('client_groups').update({ sort_order: idx }).eq('id', item.id)
+                )
+            );
         } catch (error) {
             console.error('Reorder error:', error);
             fetchAdminData();
@@ -814,14 +907,15 @@ export default function AdminPage() {
                                 />
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
-                            <div className="space-y-1">
-                                {groups.map(g => (
-                                    <div key={g.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
-                                        <span className="text-sm font-medium text-slate-700">{g.name}</span>
-                                        <button onClick={() => handleDeleteGroup(g.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleGroupDragEnd}>
+                                <SortableContext items={groups.map(g => g.id)} strategy={verticalListSortingStrategy}>
+                                    <div className="space-y-1">
+                                        {groups.map(g => (
+                                            <SortableItem key={g.id} id={g.id} name={g.name} onDelete={handleDeleteGroup} />
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                </SortableContext>
+                            </DndContext>
                         </div>
 
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -835,18 +929,15 @@ export default function AdminPage() {
                                 />
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
-                            <div className="space-y-1">
-                                {serviceTypes.map((t, idx) => (
-                                    <div key={t.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
-                                        <span className="text-sm font-medium text-slate-700">{t.name}</span>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => handleReorderServiceType(t.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleReorderServiceType(t.id, 'down')} disabled={idx === serviceTypes.length - 1} className={`p-1 rounded transition-colors ${idx === serviceTypes.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleDeleteServiceType(t.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleServiceTypeDragEnd}>
+                                <SortableContext items={serviceTypes.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                                    <div className="space-y-1">
+                                        {serviceTypes.map((t) => (
+                                            <SortableItem key={t.id} id={t.id} name={t.name} onDelete={handleDeleteServiceType} />
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                </SortableContext>
+                            </DndContext>
                         </div>
 
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -860,18 +951,15 @@ export default function AdminPage() {
                                 />
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
-                            <div className="space-y-1">
-                                {vanCompanies.map((v, idx) => (
-                                    <div key={v.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
-                                        <span className="text-sm font-medium text-slate-700">{v.name}</span>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => handleReorderVanCompany(v.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleReorderVanCompany(v.id, 'down')} disabled={idx === vanCompanies.length - 1} className={`p-1 rounded transition-colors ${idx === vanCompanies.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleDeleteVanCompany(v.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleVanCompanyDragEnd}>
+                                <SortableContext items={vanCompanies.map(v => v.id)} strategy={verticalListSortingStrategy}>
+                                    <div className="space-y-1">
+                                        {vanCompanies.map((v) => (
+                                            <SortableItem key={v.id} id={v.id} name={v.name} onDelete={handleDeleteVanCompany} />
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                </SortableContext>
+                            </DndContext>
                         </div>
 
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
@@ -885,18 +973,15 @@ export default function AdminPage() {
                                 />
                                 <button className="btn-primary p-0 w-10 h-10 shrink-0"><Plus className="w-5 h-5 mx-auto" /></button>
                             </form>
-                            <div className="space-y-1">
-                                {equipmentTypes.map((e, idx) => (
-                                    <div key={e.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group">
-                                        <span className="text-sm font-medium text-slate-700">{e.name}</span>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => handleReorderEquipmentType(e.id, 'up')} disabled={idx === 0} className={`p-1 rounded transition-colors ${idx === 0 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowUp className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleReorderEquipmentType(e.id, 'down')} disabled={idx === equipmentTypes.length - 1} className={`p-1 rounded transition-colors ${idx === equipmentTypes.length - 1 ? 'text-slate-300' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}><ArrowDown className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => handleDeleteEquipmentType(e.id)} className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5" /></button>
-                                        </div>
+                            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleEquipmentTypeDragEnd}>
+                                <SortableContext items={equipmentTypes.map(e => e.id)} strategy={verticalListSortingStrategy}>
+                                    <div className="space-y-1">
+                                        {equipmentTypes.map((e) => (
+                                            <SortableItem key={e.id} id={e.id} name={e.name} onDelete={handleDeleteEquipmentType} />
+                                        ))}
                                     </div>
-                                ))}
-                            </div>
+                                </SortableContext>
+                            </DndContext>
                         </div>
                     </div>
                 </div>
