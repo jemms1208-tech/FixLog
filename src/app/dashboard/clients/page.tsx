@@ -292,6 +292,10 @@ export default function ClientsPage() {
     async function handleAddClient(e: React.FormEvent) {
         e.preventDefault();
         if (isSubmitting) return;
+        if (!newClient.group_id) {
+            showToast('\uAD00\uB9AC \uADF8\uB8F9\uC744 \uC120\uD0DD\uD574\uC8FC\uC138\uC694.', 'error');
+            return;
+        }
         setIsSubmitting(true);
         try {
             // Combine address and addressDetail
@@ -640,9 +644,9 @@ export default function ClientsPage() {
                             />
                         </div>
                         <div>
-                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">관리 그룹</label>
-                            <select className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.group_id} onChange={e => setNewClient({ ...newClient, group_id: e.target.value })}>
-                                <option value="">선택 안함</option>
+                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">관리 그룹 <span className="text-red-500">*</span></label>
+                            <select required className="input-field w-full text-[14px] font-medium text-slate-800" value={newClient.group_id} onChange={e => setNewClient({ ...newClient, group_id: e.target.value })}>
+                                <option value="" disabled>그룹을 선택하세요</option>
                                 {groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
                             </select>
                         </div>
