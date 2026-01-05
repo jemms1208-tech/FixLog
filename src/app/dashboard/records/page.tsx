@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check, Calendar } from 'lucide-react';
+import { Search, Plus, Loader2, AlertCircle, Clock, CheckCircle2, Pencil, Check, Calendar, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import * as XLSX from 'xlsx';
 import { Modal } from '@/components/Modal';
@@ -883,58 +883,76 @@ function RecordsPageContent() {
                 <form onSubmit={handleAddRecord} className="space-y-4">
                     <div>
                         <label className="text-sm font-medium block mb-1">거래처 선택 *</label>
-                        <input
-                            type="text"
-                            placeholder="거래처 검색..."
-                            className="input-field w-full mb-2 text-sm bg-slate-50"
-                            value={clientSearch}
-                            onChange={e => setClientSearch(e.target.value)}
-                        />
-                        {clientSearch.trim() && (<div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
-                            {clientList
-                                .filter((c: any) =>
-                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                    c.phone?.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                    c.contact_phone?.toLowerCase().includes(clientSearch.toLowerCase())
-                                )
-                                .map((client: any) => {
-                                    const isSelected = newRecord.client_id === client.id;
-                                    return (
-                                        <div
-                                            key={client.id}
-                                            onClick={() => setNewRecord({ ...newRecord, client_id: client.id })}
-                                            className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
-                                                ? 'bg-blue-50 border-l-4 border-blue-600'
-                                                : 'hover:bg-slate-50'
-                                                }`}
-                                        >
-                                            <div className="flex flex-col">
-                                                <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
-                                                    {client.name}
-                                                </span>
-                                                {client.biz_reg_no && (
-                                                    <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
-                                                )}
-                                            </div>
-                                            {client.client_groups?.name && (
-                                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
-                                                    }`}>
-                                                    {client.client_groups.name}
-                                                </span>
+                        {newRecord.client_id ? (
+                            <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                                <div className="flex-1 flex items-center gap-2">
+                                    <span className="text-[14px] font-bold text-blue-700">
+                                        {clientList.find((c: any) => c.id === newRecord.client_id)?.name || ''}
+                                    </span>
+                                    {clientList.find((c: any) => c.id === newRecord.client_id)?.client_groups?.name && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-blue-600 text-white">
+                                            {clientList.find((c: any) => c.id === newRecord.client_id)?.client_groups?.name}
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => { setNewRecord({ ...newRecord, client_id: '' }); setClientSearch(''); }}
+                                    className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                                >
+                                    <X className="w-4 h-4 text-blue-600" />
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <input
+                                    type="text"
+                                    placeholder="거래처 검색..."
+                                    className="input-field w-full mb-2 text-sm bg-slate-50"
+                                    value={clientSearch}
+                                    onChange={e => setClientSearch(e.target.value)}
+                                />
+                                {clientSearch.trim() && (
+                                    <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
+                                        {clientList
+                                            .filter((c: any) =>
+                                                c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                                c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                                c.phone?.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                                c.contact_phone?.toLowerCase().includes(clientSearch.toLowerCase())
+                                            )
+                                            .map((client: any) => (
+                                                <div
+                                                    key={client.id}
+                                                    onClick={() => { setNewRecord({ ...newRecord, client_id: client.id }); setClientSearch(''); }}
+                                                    className="p-3 cursor-pointer transition-colors flex items-center justify-between group hover:bg-slate-50"
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span className="text-[14px] font-medium text-slate-700">
+                                                            {client.name}
+                                                        </span>
+                                                        {client.biz_reg_no && (
+                                                            <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                        )}
+                                                    </div>
+                                                    {client.client_groups?.name && (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-100 text-slate-500">
+                                                            {client.client_groups.name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        {clientList.filter((c: any) =>
+                                            c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                            c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                        ).length === 0 && (
+                                                <div className="p-8 text-center text-sm text-slate-400">
+                                                    검색 결과가 없습니다.
+                                                </div>
                                             )}
-                                        </div>
-                                    );
-                                })}
-                            {clientList.filter((c: any) =>
-                                c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
-                            ).length === 0 && (
-                                    <div className="p-8 text-center text-sm text-slate-400">
-                                        검색 결과가 없습니다.
                                     </div>
                                 )}
-                        </div>
+                            </>
                         )}
                         <input type="hidden" required value={newRecord.client_id} />
                     </div>
@@ -997,48 +1015,66 @@ function RecordsPageContent() {
                     <form onSubmit={handleUpdateRecord} className="space-y-4">
                         <div>
                             <label className="text-sm font-medium block mb-1">거래처</label>
-                            <input
-                                type="text"
-                                placeholder="거래처 검색..."
-                                className="input-field w-full mb-2 text-sm bg-slate-50"
-                                value={clientSearch}
-                                onChange={e => setClientSearch(e.target.value)}
-                            />
-                            {clientSearch.trim() && (<div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
-                                {clientList
-                                    .filter((c: any) =>
-                                        c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
-                                        c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
-                                    )
-                                    .map((client: any) => {
-                                        const isSelected = editingRecord.client_id === client.id;
-                                        return (
-                                            <div
-                                                key={client.id}
-                                                onClick={() => setEditingRecord({ ...editingRecord, client_id: client.id })}
-                                                className={`p-3 cursor-pointer transition-colors flex items-center justify-between group ${isSelected
-                                                    ? 'bg-blue-50 border-l-4 border-blue-600'
-                                                    : 'hover:bg-slate-50'
-                                                    }`}
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className={`text-[14px] ${isSelected ? 'font-bold text-blue-700' : 'font-medium text-slate-700'}`}>
-                                                        {client.name}
-                                                    </span>
-                                                    {client.biz_reg_no && (
-                                                        <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
-                                                    )}
-                                                </div>
-                                                {client.client_groups?.name && (
-                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'
-                                                        }`}>
-                                                        {client.client_groups.name}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                            </div>
+                            {editingRecord.client_id ? (
+                                <div className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="flex-1 flex items-center gap-2">
+                                        <span className="text-[14px] font-bold text-blue-700">
+                                            {clientList.find((c: any) => c.id === editingRecord.client_id)?.name || ''}
+                                        </span>
+                                        {clientList.find((c: any) => c.id === editingRecord.client_id)?.client_groups?.name && (
+                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-blue-600 text-white">
+                                                {clientList.find((c: any) => c.id === editingRecord.client_id)?.client_groups?.name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => { setEditingRecord({ ...editingRecord, client_id: '' }); setClientSearch(''); }}
+                                        className="p-1 hover:bg-blue-100 rounded-full transition-colors"
+                                    >
+                                        <X className="w-4 h-4 text-blue-600" />
+                                    </button>
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        type="text"
+                                        placeholder="거래처 검색..."
+                                        className="input-field w-full mb-2 text-sm bg-slate-50"
+                                        value={clientSearch}
+                                        onChange={e => setClientSearch(e.target.value)}
+                                    />
+                                    {clientSearch.trim() && (
+                                        <div className="border border-slate-200 rounded-lg overflow-y-auto max-h-[300px] bg-white divide-y divide-slate-100 shadow-inner">
+                                            {clientList
+                                                .filter((c: any) =>
+                                                    c.name.toLowerCase().includes(clientSearch.toLowerCase()) ||
+                                                    c.client_groups?.name?.toLowerCase().includes(clientSearch.toLowerCase())
+                                                )
+                                                .map((client: any) => (
+                                                    <div
+                                                        key={client.id}
+                                                        onClick={() => { setEditingRecord({ ...editingRecord, client_id: client.id }); setClientSearch(''); }}
+                                                        className="p-3 cursor-pointer transition-colors flex items-center justify-between group hover:bg-slate-50"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span className="text-[14px] font-medium text-slate-700">
+                                                                {client.name}
+                                                            </span>
+                                                            {client.biz_reg_no && (
+                                                                <span className="text-[11px] text-slate-400 font-normal">{client.biz_reg_no}</span>
+                                                            )}
+                                                        </div>
+                                                        {client.client_groups?.name && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded font-bold uppercase bg-slate-100 text-slate-500">
+                                                                {client.client_groups.name}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
                         <div>
