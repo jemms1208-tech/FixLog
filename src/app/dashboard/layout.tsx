@@ -173,7 +173,7 @@ export default function DashboardLayout({
             {/* Desktop Sidebar */}
             <aside className="hidden lg:flex w-64 flex-col border-r bg-white h-screen sticky top-0 transition-all duration-300">
                 <div className="h-16 flex items-center px-6 border-b">
-                    <span className="text-xl font-bold tracking-tight text-primary">JE Networks</span>
+                    <Link href="/dashboard" className="text-xl font-bold tracking-tight text-primary hover:opacity-80 transition-opacity">JE Networks</Link>
                 </div>
                 <nav className="flex-1 p-0 py-4 space-y-0">
                     {filteredMenuItems.map((item) => {
@@ -203,7 +203,7 @@ export default function DashboardLayout({
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} />
                     <div className="fixed inset-y-0 left-0 w-72 bg-white shadow-none flex flex-col border-r">
                         <div className="h-16 flex items-center justify-between px-6 border-b">
-                            <span className="text-lg font-bold tracking-tighter">JE Networks</span>
+                            <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="text-lg font-bold tracking-tighter hover:opacity-80 transition-opacity">JE Networks</Link>
                             <button onClick={() => setIsMobileMenuOpen(false)}>
                                 <X className="w-5 h-5" />
                             </button>
@@ -240,7 +240,7 @@ export default function DashboardLayout({
                         <button onClick={() => setIsMobileMenuOpen(true)} className="lg:hidden text-slate-600">
                             <Menu className="w-6 h-6" />
                         </button>
-                        <span className="font-extrabold tracking-tight text-xl text-slate-900 lg:hidden">JE Networks</span>
+                        <Link href="/dashboard" className="font-extrabold tracking-tight text-xl text-slate-900 lg:hidden hover:opacity-80 transition-opacity">JE Networks</Link>
                     </div>
 
                     <div className="flex items-center gap-2">
