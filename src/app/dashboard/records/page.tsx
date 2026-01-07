@@ -1017,6 +1017,18 @@ function RecordsPageContent() {
                     </div>
 
                     <div className="space-y-1">
+                        <label className="text-sm font-medium block mb-1">접수 내용 *</label>
+                        <textarea
+                            required
+                            rows={3}
+                            placeholder="발생한 장애 내용이나 요청 사항을 입력하세요..."
+                            className="input-field resize-none h-auto min-h-[100px]"
+                            value={newRecord.details}
+                            onChange={e => setNewRecord({ ...newRecord, details: e.target.value })}
+                        />
+                    </div>
+
+                    <div className="space-y-1">
                         <label className="text-sm font-medium block mb-1">처리 상태</label>
                         <div className="grid grid-cols-3 gap-2">
                             <button
@@ -1106,18 +1118,6 @@ function RecordsPageContent() {
                             </div>
                         </div>
                     )}
-
-                    <div className="space-y-1">
-                        <label className="text-sm font-medium block mb-1">상세 내용 *</label>
-                        <textarea
-                            required
-                            rows={3}
-                            placeholder="발생한 장애 내용이나 요청 사항을 입력하세요..."
-                            className="input-field resize-none h-auto min-h-[100px]"
-                            value={newRecord.details}
-                            onChange={e => setNewRecord({ ...newRecord, details: e.target.value })}
-                        />
-                    </div>
 
                     <div className="pt-2 flex gap-2">
                         <button type="button" onClick={() => setIsModalOpen(false)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>

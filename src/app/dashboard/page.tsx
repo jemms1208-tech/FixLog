@@ -691,6 +691,17 @@ export default function DashboardPage() {
                     </div>
 
                     <div>
+                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">접수 내용</label>
+                        <textarea
+                            rows={3}
+                            placeholder="접수 내용을 입력하세요"
+                            className="input-field w-full text-[14px] font-medium text-slate-800 h-auto"
+                            value={newRecord.details}
+                            onChange={(e) => setNewRecord({ ...newRecord, details: e.target.value })}
+                        />
+                    </div>
+
+                    <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">처리 상태</label>
                         <div className="grid grid-cols-3 gap-2">
                             <button
@@ -780,17 +791,6 @@ export default function DashboardPage() {
                             </div>
                         </div>
                     )}
-
-                    <div>
-                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">상세 내용</label>
-                        <textarea
-                            rows={3}
-                            placeholder="상세 내용을 입력하세요"
-                            className="input-field w-full text-[14px] font-medium text-slate-800 h-auto"
-                            value={newRecord.details}
-                            onChange={(e) => setNewRecord({ ...newRecord, details: e.target.value })}
-                        />
-                    </div>
 
                     <div className="pt-2 flex gap-3">
                         <button type="button" onClick={() => setIsAddModalOpen(false)} className="btn-outline flex-1" disabled={isSubmitting}>취소</button>

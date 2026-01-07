@@ -865,10 +865,10 @@ export default function ClientsPage() {
                             <div className="flex gap-2 mb-2">
                                 <input
                                     type="text"
-                                    className="input-field w-full text-[14px] font-medium text-slate-800 flex-1"
+                                    className="input-field w-full text-[14px] font-medium text-slate-800 flex-1 bg-slate-50"
                                     value={editingClient.address || ''}
-                                    onChange={e => setEditingClient({ ...editingClient, address: e.target.value })}
-                                    placeholder="기본 주소"
+                                    placeholder="주소 검색 버튼을 클릭하세요"
+                                    readOnly
                                 />
                                 <button
                                     type="button"
