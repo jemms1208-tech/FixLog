@@ -27,7 +27,13 @@ function RecordsPageContent() {
         client_id: '',
         type: '장애',
         details: '',
-        receiver_id: ''
+        receiver_id: '',
+        status: 'pending' as 'pending' | 'processing' | 'completed',
+        started_at: '',
+        processed_at: '',
+        first_handler_id: '',
+        handler_id: '',
+        result: ''
     });
     const [editingRecord, setEditingRecord] = useState<any>(null);
     const [completingRecord, setCompletingRecord] = useState<any>(null);
@@ -371,18 +377,38 @@ function RecordsPageContent() {
         setIsSubmitting(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
-            const recordData = {
-                ...newRecord,
+
+            const recordData: any = {
                 client_id: newRecord.client_id || null,
-                receiver_id: newRecord.receiver_id || user?.id // 선택된 접수자 또는 현재 사용자
+                type: newRecord.type,
+                details: newRecord.details,
+                receiver_id: newRecord.receiver_id || user?.id,
+                status: newRecord.status
             };
+
+            if (newRecord.status === 'processing' || newRecord.status === 'completed') {
+                if (newRecord.started_at) {
+                    recordData.started_at = new Date(newRecord.started_at).toISOString();
+                }
+                recordData.first_handler_id = newRecord.first_handler_id || user?.id;
+                if (newRecord.result) {
+                    recordData.result = newRecord.result;
+                }
+            }
+
+            if (newRecord.status === 'completed') {
+                if (newRecord.processed_at) {
+                    recordData.processed_at = new Date(newRecord.processed_at).toISOString();
+                }
+                recordData.handler_id = newRecord.handler_id || user?.id;
+            }
+
             const { data, error } = await supabase.from('service_records').insert([recordData]).select().single();
             if (error) {
                 console.error('Insert error:', error);
                 throw error;
             }
 
-            // 활동 로그 기록
             if (user) {
                 const { data: profile } = await supabase.from('profiles').select('email, display_name').eq('id', user.id).single();
                 const clientName = clientList.find((c: any) => c.id === newRecord.client_id)?.name || '미지정';
@@ -404,7 +430,7 @@ function RecordsPageContent() {
 
             setIsModalOpen(false);
             fetchRecords();
-            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '' });
+            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '', status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' });
             showToast('접수가 등록되었습니다.', 'success');
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
@@ -989,6 +1015,97 @@ function RecordsPageContent() {
                             ))}
                         </select>
                     </div>
+
+                    <div className="space-y-1">
+                        <label className="text-sm font-medium block mb-1">처리 상태</label>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setNewRecord({ ...newRecord, status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' })}
+                                className={`py-2 px-3 rounded-lg border text-[13px] font-medium transition-all ${newRecord.status === 'pending'
+                                    ? 'bg-red-600 border-red-600 text-white'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                대기
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const now = new Date();
+                                    const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                                    setNewRecord({ ...newRecord, status: 'processing', started_at: localDateTime, processed_at: '' });
+                                }}
+                                className={`py-2 px-3 rounded-lg border text-[13px] font-medium transition-all ${newRecord.status === 'processing'
+                                    ? 'bg-amber-500 border-amber-500 text-white'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                1차처리
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const now = new Date();
+                                    const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                                    setNewRecord({ ...newRecord, status: 'completed', started_at: newRecord.started_at || localDateTime, processed_at: localDateTime });
+                                }}
+                                className={`py-2 px-3 rounded-lg border text-[13px] font-medium transition-all ${newRecord.status === 'completed'
+                                    ? 'bg-emerald-600 border-emerald-600 text-white'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                            >
+                                완료
+                            </button>
+                        </div>
+                    </div>
+
+                    {(newRecord.status === 'processing' || newRecord.status === 'completed') && (
+                        <div className="space-y-4 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">
+                                        {newRecord.status === 'completed' ? '1차 처리자' : '처리자'}
+                                    </label>
+                                    <select
+                                        className="input-field w-full text-sm"
+                                        value={newRecord.first_handler_id}
+                                        onChange={e => setNewRecord({ ...newRecord, first_handler_id: e.target.value })}
+                                    >
+                                        <option value="">현재 사용자 (자동)</option>
+                                        {staffList.map(s => (
+                                            <option key={s.id} value={s.id}>{s.display_name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {newRecord.status === 'completed' && (
+                                    <div>
+                                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">완료 담당자</label>
+                                        <select
+                                            className="input-field w-full text-sm"
+                                            value={newRecord.handler_id}
+                                            onChange={e => setNewRecord({ ...newRecord, handler_id: e.target.value })}
+                                        >
+                                            <option value="">현재 사용자 (자동)</option>
+                                            {staffList.map(s => (
+                                                <option key={s.id} value={s.id}>{s.display_name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">처리 내용</label>
+                                <textarea
+                                    rows={2}
+                                    placeholder="처리 내용을 입력하세요"
+                                    className="input-field w-full text-[14px] font-medium text-slate-800 h-auto"
+                                    value={newRecord.result}
+                                    onChange={(e) => setNewRecord({ ...newRecord, result: e.target.value })}
+                                />
+                            </div>
+                        </div>
+                    )}
 
                     <div className="space-y-1">
                         <label className="text-sm font-medium block mb-1">상세 내용 *</label>

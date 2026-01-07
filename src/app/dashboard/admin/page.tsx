@@ -15,6 +15,7 @@ import {
     Plus,
     Trash2,
     GripVertical,
+    Pencil,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
@@ -113,8 +114,10 @@ const STATUS_LABELS = {
     'completed': '\uC644\uB8CC'
 };
 
-// Sortable Item Component for drag-and-drop
-function SortableItem({ id, name, onDelete }: { id: string; name: string; onDelete: (id: string) => void }) {
+// Sortable Item Component for drag-and-drop with inline edit
+function SortableItem({ id, name, onDelete, onEdit }: { id: string; name: string; onDelete: (id: string) => void; onEdit?: (id: string, newName: string) => void }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [editValue, setEditValue] = useState(name);
     const {
         attributes,
         listeners,
@@ -130,13 +133,29 @@ function SortableItem({ id, name, onDelete }: { id: string; name: string; onDele
         opacity: isDragging ? 0.5 : 1,
     };
 
+    const handleSave = () => {
+        if (editValue.trim() && editValue !== name && onEdit) {
+            onEdit(id, editValue.trim());
+        }
+        setIsEditing(false);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSave();
+        } else if (e.key === 'Escape') {
+            setEditValue(name);
+            setIsEditing(false);
+        }
+    };
+
     return (
         <div
             ref={setNodeRef}
             style={style}
             className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group"
         >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-1">
                 <button
                     type="button"
                     className="cursor-grab active:cursor-grabbing p-1 text-slate-400 hover:text-slate-600"
@@ -145,14 +164,41 @@ function SortableItem({ id, name, onDelete }: { id: string; name: string; onDele
                 >
                     <GripVertical className="w-4 h-4" />
                 </button>
-                <span className="text-sm font-medium text-slate-700">{name}</span>
+                {isEditing ? (
+                    <input
+                        type="text"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={handleSave}
+                        onKeyDown={handleKeyDown}
+                        className="text-sm font-medium text-slate-700 bg-white border border-blue-300 rounded px-2 py-0.5 flex-1 outline-none focus:ring-2 focus:ring-blue-200"
+                        autoFocus
+                    />
+                ) : (
+                    <span
+                        className="text-sm font-medium text-slate-700 cursor-pointer hover:text-blue-600"
+                        onDoubleClick={() => onEdit && setIsEditing(true)}
+                    >
+                        {name}
+                    </span>
+                )}
             </div>
-            <button
-                onClick={() => onDelete(id)}
-                className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-            >
-                <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-1">
+                {onEdit && !isEditing && (
+                    <button
+                        onClick={() => setIsEditing(true)}
+                        className="p-1 text-slate-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                        <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                )}
+                <button
+                    onClick={() => onDelete(id)}
+                    className="p-1 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
+            </div>
         </div>
     );
 }
@@ -615,6 +661,71 @@ export default function AdminPage() {
         }
     }
 
+    async function handleUpdateGroup(id: string, newName: string) {
+        const previousGroups = [...groups];
+        const oldGroup = groups.find(g => g.id === id);
+
+        setGroups(groups.map(g => g.id === id ? { ...g, name: newName } : g));
+
+        try {
+            const { error } = await supabase.from('client_groups').update({ name: newName }).eq('id', id);
+            if (error) throw error;
+
+            showToast('\uADF8\uB8F9\uBA85\uC774 \uC218\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setGroups(previousGroups);
+            showToast(`\uADF8\uB8F9 \uC218\uC815 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleUpdateServiceType(id: string, newName: string) {
+        const previousTypes = [...serviceTypes];
+
+        setServiceTypes(serviceTypes.map(t => t.id === id ? { ...t, name: newName } : t));
+
+        try {
+            const { error } = await supabase.from('service_types').update({ name: newName }).eq('id', id);
+            if (error) throw error;
+
+            showToast('\uC11C\uBE44\uC2A4 \uC720\uD615\uC774 \uC218\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setServiceTypes(previousTypes);
+            showToast(`\uC720\uD615 \uC218\uC815 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleUpdateVanCompany(id: string, newName: string) {
+        const previousVans = [...vanCompanies];
+
+        setVanCompanies(vanCompanies.map(v => v.id === id ? { ...v, name: newName } : v));
+
+        try {
+            const { error } = await supabase.from('van_companies').update({ name: newName }).eq('id', id);
+            if (error) throw error;
+
+            showToast('VAN\uC0AC\uBA85\uC774 \uC218\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setVanCompanies(previousVans);
+            showToast(`VAN\uC0AC \uC218\uC815 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
+    async function handleUpdateEquipmentType(id: string, newName: string) {
+        const previousEquips = [...equipmentTypes];
+
+        setEquipmentTypes(equipmentTypes.map(e => e.id === id ? { ...e, name: newName } : e));
+
+        try {
+            const { error } = await supabase.from('equipment_types').update({ name: newName }).eq('id', id);
+            if (error) throw error;
+
+            showToast('\uC7A5\uBE44 \uC720\uD615\uC774 \uC218\uC815\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', 'success');
+        } catch (error: any) {
+            setEquipmentTypes(previousEquips);
+            showToast(`\uC7A5\uBE44 \uC218\uC815 \uC624\uB958: ${error.message}`, 'error');
+        }
+    }
+
     async function handlePasswordSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!passwordTarget) return;
@@ -911,7 +1022,7 @@ export default function AdminPage() {
                                 <SortableContext items={groups.map(g => g.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-1">
                                         {groups.map(g => (
-                                            <SortableItem key={g.id} id={g.id} name={g.name} onDelete={handleDeleteGroup} />
+                                            <SortableItem key={g.id} id={g.id} name={g.name} onDelete={handleDeleteGroup} onEdit={handleUpdateGroup} />
                                         ))}
                                     </div>
                                 </SortableContext>
@@ -933,7 +1044,7 @@ export default function AdminPage() {
                                 <SortableContext items={serviceTypes.map(t => t.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-1">
                                         {serviceTypes.map((t) => (
-                                            <SortableItem key={t.id} id={t.id} name={t.name} onDelete={handleDeleteServiceType} />
+                                            <SortableItem key={t.id} id={t.id} name={t.name} onDelete={handleDeleteServiceType} onEdit={handleUpdateServiceType} />
                                         ))}
                                     </div>
                                 </SortableContext>
@@ -955,7 +1066,7 @@ export default function AdminPage() {
                                 <SortableContext items={vanCompanies.map(v => v.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-1">
                                         {vanCompanies.map((v) => (
-                                            <SortableItem key={v.id} id={v.id} name={v.name} onDelete={handleDeleteVanCompany} />
+                                            <SortableItem key={v.id} id={v.id} name={v.name} onDelete={handleDeleteVanCompany} onEdit={handleUpdateVanCompany} />
                                         ))}
                                     </div>
                                 </SortableContext>
@@ -977,7 +1088,7 @@ export default function AdminPage() {
                                 <SortableContext items={equipmentTypes.map(e => e.id)} strategy={verticalListSortingStrategy}>
                                     <div className="space-y-1">
                                         {equipmentTypes.map((e) => (
-                                            <SortableItem key={e.id} id={e.id} name={e.name} onDelete={handleDeleteEquipmentType} />
+                                            <SortableItem key={e.id} id={e.id} name={e.name} onDelete={handleDeleteEquipmentType} onEdit={handleUpdateEquipmentType} />
                                         ))}
                                     </div>
                                 </SortableContext>

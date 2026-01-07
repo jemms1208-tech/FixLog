@@ -298,17 +298,13 @@ export default function ClientsPage() {
         }
         setIsSubmitting(true);
         try {
-            // Combine address and addressDetail
-            const fullAddress = newClient.addressDetail
-                ? `${newClient.address} ${newClient.addressDetail}`
-                : newClient.address;
-
             const clientData = {
                 name: newClient.name,
                 biz_reg_no: newClient.biz_reg_no,
                 phone: newClient.phone,
                 contact_phone: newClient.contact_phone,
-                address: fullAddress,
+                address: newClient.address,
+                address_detail: newClient.addressDetail || null,
                 van_company: newClient.van_companies.join(', '),
                 equipment: formatEquipment(newClient.equipment),
                 group_id: newClient.group_id || null
@@ -331,11 +327,6 @@ export default function ClientsPage() {
         if (!editingClient || isSubmitting) return;
         setIsSubmitting(true);
         try {
-            // Combine address and addressDetail
-            const fullAddress = editingClient.addressDetail
-                ? `${editingClient.address} ${editingClient.addressDetail}`
-                : editingClient.address;
-
             const { error } = await supabase
                 .from('clients')
                 .update({
@@ -343,7 +334,8 @@ export default function ClientsPage() {
                     biz_reg_no: editingClient.biz_reg_no,
                     phone: editingClient.phone,
                     contact_phone: editingClient.contact_phone,
-                    address: fullAddress,
+                    address: editingClient.address,
+                    address_detail: editingClient.addressDetail || null,
                     van_company: Array.isArray(editingClient.van_companies) ? editingClient.van_companies.join(', ') : (editingClient.van_company || ''),
                     equipment: Array.isArray(editingClient.equipment) ? formatEquipment(editingClient.equipment) : editingClient.equipment,
                     group_id: editingClient.group_id || null
@@ -790,7 +782,7 @@ export default function ClientsPage() {
 
                             <div className="space-y-1 border-b border-slate-100 pb-2">
                                 <label className="text-[11px] font-medium text-slate-800 uppercase">주소</label>
-                                <p className="text-[14px] font-medium text-slate-800 leading-relaxed">{viewingClient.address || '기록 없음'}</p>
+                                <p className="text-[14px] font-medium text-slate-800 leading-relaxed">{viewingClient.address ? `${viewingClient.address}${viewingClient.address_detail ? ` ${viewingClient.address_detail}` : ''}` : '기록 없음'}</p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -810,7 +802,11 @@ export default function ClientsPage() {
                                 <>
                                     <button
                                         onClick={() => {
-                                            setEditingClient({ ...viewingClient, group_id: viewingClient.group_id || '' });
+                                            setEditingClient({
+                                                ...viewingClient,
+                                                group_id: viewingClient.group_id || '',
+                                                addressDetail: viewingClient.address_detail || ''
+                                            });
                                             setViewingClient(null);
                                         }}
                                         className="flex-1 btn-outline font-bold py-3 h-auto"
@@ -869,14 +865,14 @@ export default function ClientsPage() {
                             <div className="flex gap-2 mb-2">
                                 <input
                                     type="text"
-                                    className="input-field w-full text-[14px] font-medium text-slate-800 flex-1 bg-slate-50"
+                                    className="input-field w-full text-[14px] font-medium text-slate-800 flex-1"
                                     value={editingClient.address || ''}
-                                    placeholder="주소 검색 버튼을 클릭하세요"
-                                    readOnly
+                                    onChange={e => setEditingClient({ ...editingClient, address: e.target.value })}
+                                    placeholder="기본 주소"
                                 />
                                 <button
                                     type="button"
-                                    onClick={() => openAddressSearch((address) => setEditingClient({ ...editingClient, address, addressDetail: '' }))}
+                                    onClick={() => openAddressSearch((address) => setEditingClient({ ...editingClient, address }))}
                                     className="btn-outline shrink-0 flex items-center gap-1.5 px-3"
                                 >
                                     <MapPin className="w-4 h-4" />
