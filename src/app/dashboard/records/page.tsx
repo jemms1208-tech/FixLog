@@ -57,6 +57,7 @@ function RecordsPageContent() {
     const [allowedGroups, setAllowedGroups] = useState<string[]>([]);
     const [allowedGroupsLoaded, setAllowedGroupsLoaded] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [lastSameTypeReception, setLastSameTypeReception] = useState<{ date: string | null; loading: boolean }>({ date: null, loading: false });
     const [clientSearch, setClientSearch] = useState('');
     const searchParams = useSearchParams();
     const urlStatus = searchParams.get('status');
@@ -93,6 +94,40 @@ function RecordsPageContent() {
             fetchRecords();
         }
     }, [debouncedSearch, searchColumn, currentPage, allowedGroups, allowedGroupsLoaded, receptionDateRange, processedDateRange, statusFilter]);
+
+    // Fetch last reception date for the same client + type
+    useEffect(() => {
+        async function fetchLastSameTypeReception() {
+            if (!newRecord.client_id || !newRecord.type) {
+                setLastSameTypeReception({ date: null, loading: false });
+                return;
+            }
+
+            setLastSameTypeReception({ date: null, loading: true });
+
+            try {
+                const { data, error } = await supabase
+                    .from('service_records')
+                    .select('reception_at')
+                    .eq('client_id', newRecord.client_id)
+                    .eq('type', newRecord.type)
+                    .order('reception_at', { ascending: false })
+                    .limit(1)
+                    .single();
+
+                if (error && error.code !== 'PGRST116') {
+                    console.error('Error fetching last reception:', error);
+                }
+
+                setLastSameTypeReception({ date: data?.reception_at || null, loading: false });
+            } catch (error) {
+                console.error('Error fetching last reception:', error);
+                setLastSameTypeReception({ date: null, loading: false });
+            }
+        }
+
+        fetchLastSameTypeReception();
+    }, [newRecord.client_id, newRecord.type]);
 
 
     async function fetchUserRole() {
@@ -1000,6 +1035,26 @@ function RecordsPageContent() {
                                 </button>
                             ))}
                         </div>
+                        {/* Last same type reception info */}
+                        {newRecord.client_id && newRecord.type && (
+                            <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                                <div className="flex items-center gap-2">
+                                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                    <span className="text-[12px] text-slate-500">
+                                        {lastSameTypeReception.loading ? (
+                                            `확인 중...`
+                                        ) : lastSameTypeReception.date ? (
+                                            <>
+                                                <span className="font-medium">{`마지막 ${newRecord.type} 접수:`}</span>{' '}
+                                                <span className="font-bold text-slate-700">{formatDateTime(lastSameTypeReception.date)}</span>
+                                            </>
+                                        ) : (
+                                            <span className="text-slate-400">{`이 거래처의 ${newRecord.type} 접수 이력이 없습니다`}</span>
+                                        )}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     <div className="space-y-1">
