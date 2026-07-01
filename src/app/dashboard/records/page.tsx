@@ -25,6 +25,7 @@ function RecordsPageContent() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [newRecord, setNewRecord] = useState({
         client_id: '',
+        reception_at: '',
         type: '장애',
         details: '',
         receiver_id: '',
@@ -70,6 +71,7 @@ function RecordsPageContent() {
     }, [isModalOpen, editingRecord]);
 
     const supabase = createClient();
+    const isAdmin = userRole === 'admin' || userRole === 'operator';
     const { showToast } = useToast();
 
     // 검색어 디바운싱 (300ms)
@@ -465,7 +467,7 @@ function RecordsPageContent() {
 
             setIsModalOpen(false);
             fetchRecords();
-            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '', status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' });
+            setNewRecord({ client_id: '', reception_at: '', type: '장애', details: '', receiver_id: '', status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' });
             showToast('접수가 등록되었습니다.', 'success');
         } catch (error: any) {
             showToast(`등록 오류: ${error.message}`, 'error');
@@ -559,9 +561,7 @@ function RecordsPageContent() {
     }
 
     function openCompleteModal(record: any) {
-        const now = new Date();
-        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-            .toISOString().slice(0, 16);
+        const localDateTime = nowDateTimeLocal();
         setCompletingRecord({
             id: record.id,
             processed_at: localDateTime,
@@ -597,9 +597,7 @@ function RecordsPageContent() {
     }
 
     function openProcessingModal(record: any) {
-        const now = new Date();
-        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-            .toISOString().slice(0, 16);
+        const localDateTime = nowDateTimeLocal();
         setProcessingRecord({
             id: record.id,
             started_at: localDateTime,
@@ -647,6 +645,20 @@ function RecordsPageContent() {
         } catch (error: any) {
             showToast(`처리 시작 오류: ${error.message}`, 'error');
         }
+    }
+
+    // UTC ISO 문자열 -> datetime-local 입력값(YYYY-MM-DDTHH:mm, 로컬 시각)
+    function toDateTimeLocal(iso: string | null | undefined): string {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+
+    // 현재 시각의 datetime-local 문자열
+    function nowDateTimeLocal(): string {
+        const now = new Date();
+        return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     }
 
     function formatDateTime(dateStr: string | null | undefined) {
