@@ -486,20 +486,24 @@ function RecordsPageContent() {
         setIsSubmitting(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            const updatePayload: any = {
+                client_id: editingRecord.client_id || null,
+                type: editingRecord.type,
+                details: editingRecord.details,
+                result: editingRecord.result,
+                status: editingRecord.status,
+                processed_at: editingRecord.processed_at ? new Date(editingRecord.processed_at).toISOString() : null,
+                started_at: editingRecord.started_at ? new Date(editingRecord.started_at).toISOString() : null,
+                receiver_id: editingRecord.receiver_id || null,
+                first_handler_id: editingRecord.first_handler_id || null,
+                handler_id: editingRecord.handler_id || null
+            };
+            if (isAdmin && editingRecord.reception_at) {
+                updatePayload.reception_at = new Date(editingRecord.reception_at).toISOString();
+            }
             const { error } = await supabase
                 .from('service_records')
-                .update({
-                    client_id: editingRecord.client_id || null,
-                    type: editingRecord.type,
-                    details: editingRecord.details,
-                    result: editingRecord.result,
-                    status: editingRecord.status,
-                    processed_at: editingRecord.processed_at,
-                    started_at: editingRecord.started_at,
-                    receiver_id: editingRecord.receiver_id || null,
-                    first_handler_id: editingRecord.first_handler_id || null,
-                    handler_id: editingRecord.handler_id || null
-                })
+                .update(updatePayload)
                 .eq('id', editingRecord.id);
             if (error) throw error;
 
@@ -1365,6 +1369,37 @@ function RecordsPageContent() {
                                 ))}
                             </div>
                         </div>
+                        {isAdmin && (
+                            <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+                                <div>
+                                    <label className="text-sm font-medium block mb-1">접수일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.reception_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, reception_at: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium block mb-1">1차처리 일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.started_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, started_at: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm font-medium block mb-1">완료 일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.processed_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, processed_at: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        )}
                         <div className="grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
                             <div>
                                 <label className="text-sm font-medium block mb-1">접수자</label>
