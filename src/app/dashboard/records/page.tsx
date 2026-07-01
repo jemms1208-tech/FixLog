@@ -1457,10 +1457,12 @@ function RecordsPageContent() {
                             <label className="text-sm font-medium block mb-1">처리일시</label>
                             <input
                                 type="datetime-local"
-                                className="input-field w-full"
+                                className={`input-field w-full ${!isAdmin ? 'bg-slate-50 text-slate-500' : ''}`}
                                 value={completingRecord.processed_at}
+                                disabled={!isAdmin}
                                 onChange={e => setCompletingRecord({ ...completingRecord, processed_at: e.target.value })}
                             />
+                            {!isAdmin && <p className="text-[11px] text-slate-400 mt-1">현재 시각으로 기록됩니다.</p>}
                         </div>
                         <div>
                             <label className="text-sm font-medium block mb-1">처리결과</label>
@@ -1501,10 +1503,12 @@ function RecordsPageContent() {
                             <label className="text-sm font-medium block mb-1">처리일시</label>
                             <input
                                 type="datetime-local"
-                                className="input-field w-full"
+                                className={`input-field w-full ${!isAdmin ? 'bg-slate-50 text-slate-500' : ''}`}
                                 value={processingRecord.started_at}
+                                disabled={!isAdmin}
                                 onChange={e => setProcessingRecord({ ...processingRecord, started_at: e.target.value })}
                             />
+                            {!isAdmin && <p className="text-[11px] text-slate-400 mt-1">현재 시각으로 기록됩니다.</p>}
                         </div>
                         <div>
                             <label className="text-sm font-medium block mb-1">처리 내용</label>
