@@ -423,6 +423,10 @@ function RecordsPageContent() {
                 status: newRecord.status
             };
 
+            if (isAdmin && newRecord.reception_at) {
+                recordData.reception_at = new Date(newRecord.reception_at).toISOString();
+            }
+
             if (newRecord.status === 'processing' || newRecord.status === 'completed') {
                 if (newRecord.started_at) {
                     recordData.started_at = new Date(newRecord.started_at).toISOString();
@@ -1083,6 +1087,18 @@ function RecordsPageContent() {
                         </select>
                     </div>
 
+                    {isAdmin && (
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium block mb-1">접수일시 <span className="text-[11px] text-slate-400">(관리자 · 미입력 시 현재 시각)</span></label>
+                            <input
+                                type="datetime-local"
+                                className="input-field w-full"
+                                value={newRecord.reception_at}
+                                onChange={e => setNewRecord({ ...newRecord, reception_at: e.target.value })}
+                            />
+                        </div>
+                    )}
+
                     <div className="space-y-1">
                         <label className="text-sm font-medium block mb-1">접수 내용 *</label>
                         <textarea
@@ -1173,6 +1189,30 @@ function RecordsPageContent() {
                                     </div>
                                 )}
                             </div>
+                            {isAdmin && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">1차처리 일시</label>
+                                        <input
+                                            type="datetime-local"
+                                            className="input-field w-full text-sm"
+                                            value={newRecord.started_at}
+                                            onChange={e => setNewRecord({ ...newRecord, started_at: e.target.value })}
+                                        />
+                                    </div>
+                                    {newRecord.status === 'completed' && (
+                                        <div>
+                                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">완료 일시</label>
+                                            <input
+                                                type="datetime-local"
+                                                className="input-field w-full text-sm"
+                                                value={newRecord.processed_at}
+                                                onChange={e => setNewRecord({ ...newRecord, processed_at: e.target.value })}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div>
                                 <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">처리 내용</label>
                                 <textarea
