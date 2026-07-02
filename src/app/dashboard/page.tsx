@@ -44,6 +44,7 @@ export default function DashboardPage() {
     const [serviceTypes, setServiceTypes] = useState<any[]>([]);
     const [newRecord, setNewRecord] = useState({
         client_id: '',
+        reception_at: '',
         type: '장애',
         details: '',
         receiver_id: '',
@@ -66,6 +67,7 @@ export default function DashboardPage() {
     const [processingRecord, setProcessingRecord] = useState<any>(null);
     const { showToast } = useToast();
     const supabase = createClient();
+    const isAdmin = userRole === 'admin' || userRole === 'operator';
 
     useEffect(() => {
         fetchDashboardData();
@@ -272,6 +274,10 @@ export default function DashboardPage() {
                 status: newRecord.status
             };
 
+            if (isAdmin && newRecord.reception_at) {
+                recordData.reception_at = new Date(newRecord.reception_at).toISOString();
+            }
+
             if (newRecord.status === 'processing' || newRecord.status === 'completed') {
                 if (newRecord.started_at) {
                     recordData.started_at = new Date(newRecord.started_at).toISOString();
@@ -312,7 +318,7 @@ export default function DashboardPage() {
             }
 
             setIsAddModalOpen(false);
-            setNewRecord({ client_id: '', type: '장애', details: '', receiver_id: '', status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' });
+            setNewRecord({ client_id: '', reception_at: '', type: '장애', details: '', receiver_id: '', status: 'pending', started_at: '', processed_at: '', first_handler_id: '', handler_id: '', result: '' });
             setClientSearch('');
             showToast('접수가 등록되었습니다.', 'success');
             fetchDashboardData();
@@ -322,6 +328,20 @@ export default function DashboardPage() {
         } finally {
             setIsSubmitting(false);
         }
+    }
+
+    // UTC ISO 문자열 -> datetime-local 입력값(YYYY-MM-DDTHH:mm, 로컬 시각)
+    function toDateTimeLocal(iso: string | null | undefined): string {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    }
+
+    // 현재 시각의 datetime-local 문자열
+    function nowDateTimeLocal(): string {
+        const now = new Date();
+        return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     }
 
     function formatDateTime(dateStr: string | null | undefined) {
@@ -344,20 +364,24 @@ export default function DashboardPage() {
         setIsSubmitting(true);
         try {
             const { data: { user } } = await supabase.auth.getUser();
+            const updatePayload: any = {
+                client_id: editingRecord.client_id || null,
+                type: editingRecord.type,
+                details: editingRecord.details,
+                result: editingRecord.result,
+                status: editingRecord.status,
+                processed_at: editingRecord.processed_at ? new Date(editingRecord.processed_at).toISOString() : null,
+                started_at: editingRecord.started_at ? new Date(editingRecord.started_at).toISOString() : null,
+                receiver_id: editingRecord.receiver_id || null,
+                first_handler_id: editingRecord.first_handler_id || null,
+                handler_id: editingRecord.handler_id || null
+            };
+            if (isAdmin && editingRecord.reception_at) {
+                updatePayload.reception_at = new Date(editingRecord.reception_at).toISOString();
+            }
             const { error } = await supabase
                 .from('service_records')
-                .update({
-                    client_id: editingRecord.client_id || null,
-                    type: editingRecord.type,
-                    details: editingRecord.details,
-                    result: editingRecord.result,
-                    status: editingRecord.status,
-                    processed_at: editingRecord.processed_at,
-                    started_at: editingRecord.started_at,
-                    receiver_id: editingRecord.receiver_id || null,
-                    first_handler_id: editingRecord.first_handler_id || null,
-                    handler_id: editingRecord.handler_id || null
-                })
+                .update(updatePayload)
                 .eq('id', editingRecord.id);
             if (error) throw error;
             setEditingRecord(null);
@@ -391,9 +415,7 @@ export default function DashboardPage() {
     }
 
     function openCompleteModal(record: any) {
-        const now = new Date();
-        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-            .toISOString().slice(0, 16);
+        const localDateTime = nowDateTimeLocal();
         setCompletingRecord({ id: record.id, processed_at: localDateTime, result: '', handler_id: record.handler_id || '' });
     }
 
@@ -425,9 +447,7 @@ export default function DashboardPage() {
     }
 
     function openProcessingModal(record: any) {
-        const now = new Date();
-        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
-            .toISOString().slice(0, 16);
+        const localDateTime = nowDateTimeLocal();
         setProcessingRecord({ id: record.id, started_at: localDateTime, result: '', first_handler_id: record.first_handler_id || '' });
     }
 
@@ -745,6 +765,18 @@ export default function DashboardPage() {
                         </select>
                     </div>
 
+                    {isAdmin && (
+                        <div>
+                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">접수일시 <span className="text-[10px] text-slate-400 normal-case">(관리자 · 미입력 시 현재 시각)</span></label>
+                            <input
+                                type="datetime-local"
+                                className="input-field w-full"
+                                value={newRecord.reception_at}
+                                onChange={e => setNewRecord({ ...newRecord, reception_at: e.target.value })}
+                            />
+                        </div>
+                    )}
+
                     <div>
                         <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">접수 내용</label>
                         <textarea
@@ -834,6 +866,30 @@ export default function DashboardPage() {
                                     </div>
                                 )}
                             </div>
+                            {isAdmin && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">1차처리 일시</label>
+                                        <input
+                                            type="datetime-local"
+                                            className="input-field w-full text-sm"
+                                            value={newRecord.started_at}
+                                            onChange={e => setNewRecord({ ...newRecord, started_at: e.target.value })}
+                                        />
+                                    </div>
+                                    {newRecord.status === 'completed' && (
+                                        <div>
+                                            <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">완료 일시</label>
+                                            <input
+                                                type="datetime-local"
+                                                className="input-field w-full text-sm"
+                                                value={newRecord.processed_at}
+                                                onChange={e => setNewRecord({ ...newRecord, processed_at: e.target.value })}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             <div>
                                 <label className="text-[11px] font-medium text-slate-800 mb-1.5 block uppercase">처리 내용</label>
                                 <textarea
@@ -1082,6 +1138,37 @@ export default function DashboardPage() {
                                 </div>
                             </div>
                         </div>
+                        {isAdmin && (
+                            <div className="grid grid-cols-3 gap-3 border-t border-slate-50 pt-2">
+                                <div>
+                                    <label className="text-[11px] font-medium block mb-1">접수일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.reception_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, reception_at: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium block mb-1">1차처리 일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.started_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, started_at: e.target.value })}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[11px] font-medium block mb-1">완료 일시</label>
+                                    <input
+                                        type="datetime-local"
+                                        className="input-field w-full text-sm"
+                                        value={toDateTimeLocal(editingRecord.processed_at)}
+                                        onChange={e => setEditingRecord({ ...editingRecord, processed_at: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+                        )}
                         <div className="pt-2 flex gap-2">
                             <button type="button" onClick={() => setEditingRecord(null)} className="btn-outline flex-1">취소</button>
                             <button type="submit" className="btn-primary flex-1">수정</button>
@@ -1098,10 +1185,12 @@ export default function DashboardPage() {
                             <label className="text-[11px] font-medium block mb-1">처리일시</label>
                             <input
                                 type="datetime-local"
-                                className="input-field w-full"
+                                className={`input-field w-full ${!isAdmin ? 'bg-slate-50 text-slate-500' : ''}`}
                                 value={completingRecord.processed_at}
+                                disabled={!isAdmin}
                                 onChange={e => setCompletingRecord({ ...completingRecord, processed_at: e.target.value })}
                             />
+                            {!isAdmin && <p className="text-[11px] text-slate-400 mt-1">현재 시각으로 기록됩니다.</p>}
                         </div>
                         <div>
                             <label className="text-[11px] font-medium block mb-1">처리결과</label>
@@ -1142,10 +1231,12 @@ export default function DashboardPage() {
                             <label className="text-[11px] font-medium block mb-1">처리일시</label>
                             <input
                                 type="datetime-local"
-                                className="input-field w-full"
+                                className={`input-field w-full ${!isAdmin ? 'bg-slate-50 text-slate-500' : ''}`}
                                 value={processingRecord.started_at}
+                                disabled={!isAdmin}
                                 onChange={e => setProcessingRecord({ ...processingRecord, started_at: e.target.value })}
                             />
+                            {!isAdmin && <p className="text-[11px] text-slate-400 mt-1">현재 시각으로 기록됩니다.</p>}
                         </div>
                         <div>
                             <label className="text-[11px] font-medium block mb-1">처리 내용</label>
